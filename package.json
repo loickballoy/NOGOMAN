@@ -1,0 +1,32 @@
+{
+  "name": "nogoman",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "type": "module",
+  "dependencies": {
+    "@tailwindcss/vite": "^4.1.10",
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.16.0",
+    "stripe": "^18.2.1",
+    "tailwind-animate": "^0.2.10",
+    "tailwindcss-animate": "^1.0.7"
+  },
+  "devDependencies": {
+    "auto-prefixer": "^0.4.2",
+    "autoprefixer": "^10.4.21",
+    "nodemon": "^3.1.10",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.10"
+  }
+}
