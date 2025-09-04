@@ -87,7 +87,7 @@ npx expo start -c --tunnel
 
 Developed by Balloy Loïck – Computer Engineering student at EPITA (SSSE Major).
 
-- Portfolio: [portfolio-link]
+- Portfolio: [https://www.lballoy-portfolio.com]
 
 - GitHub: [https://github.com/loickballoy]
 
