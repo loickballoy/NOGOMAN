@@ -1,32 +1,31 @@
 {
-  "name": "nogoman",
-  "version": "1.0.0",
-  "main": "index.js",
+  "name": "agrilink",
+  "version": "0.1.0",
+  "private": true,
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
-  "type": "module",
   "dependencies": {
-    "@tailwindcss/vite": "^4.1.10",
-    "bcrypt": "^6.0.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.5.0",
-    "express": "^5.1.0",
-    "jsonwebtoken": "^9.0.2",
-    "pg": "^8.16.0",
-    "stripe": "^18.2.1",
-    "tailwind-animate": "^0.2.10",
-    "tailwindcss-animate": "^1.0.7"
+    "next": "14.2.3",
+    "react": "^18",
+    "react-dom": "^18",
+    "leaflet": "^1.9.4",
+    "react-leaflet": "^4.2.1",
+    "lucide-react": "^0.383.0",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^2.3.0",
+    "class-variance-authority": "^0.7.0"
   },
   "devDependencies": {
-    "auto-prefixer": "^0.4.2",
-    "autoprefixer": "^10.4.21",
-    "nodemon": "^3.1.10",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.10"
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@types/leaflet": "^1.9.12",
+    "autoprefixer": "^10.0.1",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5"
   }
 }
