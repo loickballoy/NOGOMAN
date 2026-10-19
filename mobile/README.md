@@ -85,12 +85,51 @@ npx expo lint
 npx expo-doctor
 ```
 
+## Development build (needed for calls, TestFlight and the stores)
+
+Expo Go only runs the modules it ships with and only one SDK version. A development build is
+your own copy of the app with the Nogoman icon and identifiers, installed on your phone, that
+still loads the JavaScript live from your computer.
+
+There are three variants, installable side by side (`app.config.ts`):
+
+| Profile (`eas.json`) | App name | Bundle id | Talks to |
+|---|---|---|---|
+| `development` | Nogoman (dev) | `ci.nogoman.app.development` | your computer (Metro) + `EXPO_PUBLIC_API_URL` |
+| `preview` | Nogoman (test) | `ci.nogoman.app.preview` | the API set for the `preview` environment |
+| `production` | Nogoman | `ci.nogoman.app` | the HTTPS API (store builds) |
+
+Test builds may call the homelab over plain HTTP (Tailscale). Production builds only allow HTTPS.
+
+**One-time setup**
+```bash
+cd mobile
+npx eas-cli@latest login                 # or export EXPO_TOKEN=... on the homelab
+npx eas-cli@latest init                  # creates the EAS project and prints its id
+export EAS_PROJECT_ID=<the id>           # also add it to your shell profile
+npx eas-cli@latest device:create         # registers your iPhone (opens a link to install a profile)
+# API address baked into each build:
+npx eas-cli@latest env:create --environment development --name EXPO_PUBLIC_API_URL --value http://<tailscale-ip>:3000 --visibility plaintext
+npx eas-cli@latest env:create --environment preview --name EXPO_PUBLIC_API_URL --value http://<tailscale-ip>:3000 --visibility plaintext
+# Android map tiles (Google Cloud console → Maps SDK for Android → API key):
+npx eas-cli@latest env:create --environment preview --name GOOGLE_MAPS_API_KEY --value <key> --visibility sensitive
+```
+The first iOS build asks for your Apple Developer login and creates the certificates and
+provisioning profile for you.
+
+**Build and run**
+```bash
+npm run build:dev:ios          # ~15 min on EAS; ends with a QR code / link to install
+npm run start:dev-client       # then open "Nogoman (dev)" on the phone
+```
+For testers: `npm run build:preview` makes a standalone "Nogoman (test)". It installs from a link
+on registered iPhones, and as an APK on Android.
+
 ## Building for the stores
 
-Use EAS (`npx eas-cli@latest build`). Before the first store build:
-- Android needs a Google Maps API key for the map (`android.config.googleMaps.apiKey` in `app.json`).
-  Expo Go works without one.
-- Bundle identifiers are `ci.nogoman.app` for both platforms. Change them in `app.json` if you prefer another.
+`npm run build:prod`, then `npx eas-cli@latest submit --platform ios` sends it to TestFlight
+(App Store Connect app record needed first), and `--platform android` to the Play Console.
+Production needs the API on HTTPS (a domain behind the Cloudflare Tunnel).
 
 ## Notes for contributors
 
