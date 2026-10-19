@@ -176,6 +176,9 @@ describe('Nogoman end-to-end flow', () => {
     const audio = await http().get(voice.body.audioUrl).set(auth(worker.token)).expect(200);
     expect(audio.headers['content-type']).toContain('audio/mp4');
     expect(audio.headers['cross-origin-resource-policy']).toBe('cross-origin');
+    // iOS's player asks for byte ranges.
+    const part = await http().get(voice.body.audioUrl).set(auth(worker.token)).set('Range', 'bytes=0-3').expect(206);
+    expect(part.headers['content-range']).toMatch(/^bytes 0-3\//);
     await http().post(`/conversations/${conv.body.id}/voice`).set(auth(farmer.token))
       .field('durationMs', '4200').attach('audio', Buffer.from('<script>'), { filename: 'x.html', contentType: 'text/html' }).expect(400);
     // What the app sends: the raw bytes as the body.

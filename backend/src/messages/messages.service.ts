@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ApplicationStatus, Conversation, Message, MessageKind, User } from '@prisma/client';
 import { randomBytes } from 'crypto';
-import { createReadStream, existsSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { AppConfig } from '../config/app-config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -134,7 +134,7 @@ export class MessagesService {
     const path = join(this.dir, m.audioPath);
     if (!existsSync(path)) throw new NotFoundException();
     const ext = m.audioPath.split('.').pop() ?? '';
-    return { stream: createReadStream(path), type: EXT_TYPES[ext] ?? 'application/octet-stream' };
+    return { path, type: EXT_TYPES[ext] ?? 'application/octet-stream' };
   }
 
   async markRead(user: User, conversationId: string) {

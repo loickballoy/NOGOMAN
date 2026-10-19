@@ -121,8 +121,9 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   return data as T;
 }
 
-/** Current access token, for media the app loads directly (voice notes). */
-export function accessToken(): string | undefined {
+/** A valid access token, for media the app loads directly (voice notes). */
+export async function accessToken(): Promise<string | undefined> {
+  await ensureFreshToken();
   return session?.getTokens()?.accessToken;
 }
 

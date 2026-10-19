@@ -2,8 +2,9 @@ import {
   AudioQuality, IOSOutputFormat, RecordingOptions, requestRecordingPermissionsAsync, setAudioModeAsync,
   useAudioPlayer, useAudioPlayerStatus, useAudioRecorder, useAudioRecorderState,
 } from 'expo-audio';
+import { File, Paths } from 'expo-file-system';
 import { useEffect, useState } from 'react';
-import { Platform, Pressable, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, View } from 'react-native';
 import { accessToken, API_URL } from '@/lib/api';
 import { colors } from '@/lib/theme';
 import { Icon } from './Icon';
@@ -67,29 +68,51 @@ export function VoiceBubble({ url, durationMs, mine }: { url: string; durationMs
   const player = useAudioPlayer(null);
   const status = useAudioPlayerStatus(player);
   const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     if (status.didJustFinish) player.seekTo(0);
   }, [status.didJustFinish, player]);
 
   async function toggle() {
+    if (loading) return;
     if (!loaded) {
-      const token = accessToken();
-      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-      if (Platform.OS === 'web') {
-        // The web player ignores request headers, so fetch with the token and play a local blob.
-        const res = await fetch(`${API_URL}${url}`, { headers });
-        if (!res.ok) return;
-        player.replace({ uri: URL.createObjectURL(await res.blob()) });
-      } else {
-        player.replace({ uri: `${API_URL}${url}`, headers });
+      setLoading(true);
+      setFailed(false);
+      try {
+        const token = await accessToken();
+        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+        if (Platform.OS === 'web') {
+          // The web player ignores request headers, so fetch with the token and play a local blob.
+          const res = await fetch(`${API_URL}${url}`, { headers });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          player.replace({ uri: URL.createObjectURL(await res.blob()) });
+        } else {
+          // Download once into the cache, then play the local file: no streaming, no auth
+          // headers for the player to forget, works offline afterwards.
+          const id = url.split('/')[2] ?? String(Date.now());
+          const local = new File(Paths.cache, `voice-${id}.m4a`);
+          if (!local.exists) await File.downloadFileAsync(`${API_URL}${url}`, local, { headers, idempotent: true });
+          player.replace({ uri: local.uri });
+        }
+        // Without this, iPhones in silent mode play voice notes muted.
+        await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
+        setLoaded(true);
+        player.play();
+      } catch (err) {
+        console.warn(`[voice] could not play ${url}: ${String(err)}`);
+        setFailed(true);
+      } finally {
+        setLoading(false);
       }
-      setLoaded(true);
-      player.play();
       return;
     }
     if (status.playing) player.pause();
-    else player.play();
+    else {
+      await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
+      player.play();
+    }
   }
 
   const fg = mine ? colors.white : colors.ink;
@@ -100,7 +123,9 @@ export function VoiceBubble({ url, durationMs, mine }: { url: string; durationMs
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 210 }}>
       <Pressable accessibilityRole="button" accessibilityLabel={status.playing ? 'Pause' : 'Écouter le message vocal'} onPress={toggle} hitSlop={8}
         style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: mine ? colors.white : colors.ink, alignItems: 'center', justifyContent: 'center' }}>
-        <Icon name={status.playing ? 'pause' : 'play'} size={18} color={mine ? colors.ink : colors.white} strokeWidth={2.4} />
+        {loading
+          ? <ActivityIndicator size="small" color={mine ? colors.ink : colors.white} />
+          : <Icon name={failed ? 'alert' : status.playing ? 'pause' : 'play'} size={18} color={mine ? colors.ink : colors.white} strokeWidth={2.4} />}
       </Pressable>
       <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 2, height: 28 }}>
         {bars.map((h, i) => (

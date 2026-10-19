@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Get, HttpCode, Module, Param, Post, Query, Req, Res, StreamableFile, UploadedFile, UseInterceptors,
+  Body, Controller, Get, HttpCode, Module, Param, Post, Query, Req, Res, UploadedFile, UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiProperty, ApiTags } from '@nestjs/swagger';
@@ -79,12 +79,18 @@ export class MessagesController {
     return this.messages.sendVoice(user, id, file, durationMs);
   }
 
+  /**
+   * Served with byte-range support (206 Partial Content): iOS's media player asks for ranges
+   * and may refuse to play a file served whole. The web build runs on another origin, hence
+   * the CORP header; the route still requires the bearer token.
+   */
   @Get('messages/:id/audio')
-  async audio(@CurrentUser() user: User, @Param('id') id: string, @Res({ passthrough: true }) res: Response) {
-    const { stream, type } = await this.messages.audio(user, id);
-    // The web build runs on another origin; the route still requires the bearer token.
-    res.set({ 'Content-Type': type, 'Cache-Control': 'private, max-age=86400', 'Cross-Origin-Resource-Policy': 'cross-origin' });
-    return new StreamableFile(stream);
+  async audio(@CurrentUser() user: User, @Param('id') id: string, @Res() res: Response) {
+    const { path, type } = await this.messages.audio(user, id);
+    res.sendFile(path, {
+      acceptRanges: true,
+      headers: { 'Content-Type': type, 'Cache-Control': 'private, max-age=86400', 'Cross-Origin-Resource-Policy': 'cross-origin' },
+    });
   }
 
   @Post('conversations/:id/read')
