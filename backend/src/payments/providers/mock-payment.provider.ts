@@ -36,7 +36,8 @@ export class MockPaymentProvider implements PaymentProvider {
     }
     const body = JSON.parse(rawBody.toString('utf8'));
     if (!['collection', 'payout'].includes(body.kind) || !['SUCCEEDED', 'FAILED'].includes(body.status)
-      || typeof body.eventId !== 'string' || typeof body.providerRef !== 'string') {
+      || typeof body.eventId !== 'string' || typeof body.providerRef !== 'string'
+      || (body.amountXof !== undefined && !Number.isInteger(body.amountXof))) {
       throw new UnauthorizedException({ code: 'BAD_PAYLOAD' });
     }
     return body as WebhookEvent;

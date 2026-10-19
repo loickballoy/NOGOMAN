@@ -27,9 +27,10 @@ export interface PayoutResult {
   providerRef: string;
 }
 
+/** amountXof: what the provider says actually moved. Real providers must always set it. */
 export type WebhookEvent =
-  | { eventId: string; kind: 'collection'; providerRef: string; status: 'SUCCEEDED' | 'FAILED'; reason?: string }
-  | { eventId: string; kind: 'payout'; providerRef: string; status: 'SUCCEEDED' | 'FAILED'; reason?: string };
+  | { eventId: string; kind: 'collection'; providerRef: string; status: 'SUCCEEDED' | 'FAILED'; reason?: string; amountXof?: number }
+  | { eventId: string; kind: 'payout'; providerRef: string; status: 'SUCCEEDED' | 'FAILED'; reason?: string; amountXof?: number };
 
 /**
  * A licensed aggregator (CinetPay, PayDunya, Flutterwave…) that holds the escrowed funds,

@@ -31,6 +31,8 @@ services:
         condition: service_healthy
     # Reachable from the host (and your tailnet if API_BIND is the host's Tailscale IP).
     # The public internet only reaches it through the tunnel.
+    volumes:
+      - uploads:/app/uploads
     ports:
       - "${API_BIND:-127.0.0.1}:3000:3000"
 
@@ -57,10 +59,12 @@ services:
     restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env}
+      # Only needed with --profile tunnel.
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:
       - api
     profiles: ["tunnel"]
 
 volumes:
   pgdata:
+  uploads:

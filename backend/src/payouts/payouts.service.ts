@@ -57,6 +57,7 @@ export class PayoutsService {
       await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE`;
       const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
       if (!user.payoutOperator || !user.payoutPhone || user.disabledAt) return null;
+      if (user.payoutHoldUntil && user.payoutHoldUntil > new Date()) return null;
 
       const inFlight = await tx.payout.count({ where: { userId, status: PayoutStatus.PENDING } });
       if (inFlight > 0) return null;
@@ -100,10 +101,14 @@ export class PayoutsService {
     return true;
   }
 
-  async settle(providerRef: string, status: 'SUCCEEDED' | 'FAILED', reason?: string) {
+  async settle(providerRef: string, status: 'SUCCEEDED' | 'FAILED', reason?: string, amountXof?: number) {
     const payout = await this.prisma.payout.findUnique({ where: { providerRef } });
     if (!payout) {
       this.logger.warn(`webhook for unknown payout ${providerRef}`);
+      return;
+    }
+    if (amountXof !== undefined && amountXof !== payout.amountXof) {
+      this.logger.error(`payout ${payout.id}: provider reports ${amountXof} XOF, expected ${payout.amountXof}. Left pending.`);
       return;
     }
     if (status === 'SUCCEEDED') {

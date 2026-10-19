@@ -35,8 +35,9 @@ export class CreateJobDto {
   @ApiProperty({ example: '2026-11-02' }) @IsDateString({ strict: true })
   startDate: string;
 
-  @ApiProperty({ example: 'Daloa' }) @IsString() @Length(2, 80)
-  locality: string;
+  @ApiPropertyOptional({ description: 'Fallback name if the server cannot geocode the position', example: 'Daloa' })
+  @IsOptional() @IsString() @Length(2, 80)
+  locality?: string;
 
   @ApiProperty() @IsLatitude()
   lat: number;
@@ -56,7 +57,8 @@ export class SearchJobsDto {
   @ApiProperty() @Type(() => Number) @IsLongitude()
   lng: number;
 
-  @ApiPropertyOptional({ default: 25 }) @IsOptional() @Type(() => Number) @IsNumber() @Min(1) @Max(150)
+  @ApiPropertyOptional({ description: 'Leave empty to search the whole country: people travel for farm work' })
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(1) @Max(5000)
   radiusKm?: number;
 
   @ApiPropertyOptional({ enum: JobCategory }) @IsOptional() @IsEnum(JobCategory)
@@ -67,4 +69,8 @@ export class SearchJobsDto {
 
   @ApiPropertyOptional({ default: 30 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100)
   limit?: number;
+
+  @ApiPropertyOptional({ default: 0, description: 'Skip this many results (for "see more")' })
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(10_000)
+  offset?: number;
 }

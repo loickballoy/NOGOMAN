@@ -1,8 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Job, JobStatus, Prisma, User } from '@prisma/client';
 import { AppConfig } from '../config/app-config';
 import { boundingBox } from '../common/geo';
 import { todayLocal } from '../common/time';
+import { GEOCODER, Geocoder } from '../geo/geocoder';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateJobDto, SearchJobsDto, UpdateJobDto } from './dto';
 import { presentJob } from './job.presenter';
@@ -11,7 +12,11 @@ const TAKEN_STATUSES = ['AWAITING_FUNDING', 'ACTIVE', 'COMPLETED'] as const;
 
 @Injectable()
 export class JobsService {
-  constructor(private readonly prisma: PrismaService, private readonly config: AppConfig) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: AppConfig,
+    @Inject(GEOCODER) private readonly geocoder: Geocoder,
+  ) {}
 
   private assertStartDate(startDate: string) {
     if (new Date(`${startDate}T00:00:00Z`) < todayLocal()) {
@@ -23,6 +28,13 @@ export class JobsService {
     this.assertStartDate(dto.startDate);
     if (this.config.requireKycToTransact && farmer.kycLevel < 1) {
       throw new ForbiddenException({ code: 'KYC_REQUIRED', message: "Vérifiez votre identité pour publier une offre." });
+    }
+    // The server names the place itself from the coordinates, so a job's location
+    // can't be mislabelled by the phone. Without a geocoder result it stays unverified.
+    const place = await this.geocoder.reverse(dto.lat, dto.lng);
+    const locality = place?.locality ?? dto.locality?.trim();
+    if (!locality) {
+      throw new BadRequestException({ code: 'PLACE_NOT_FOUND', message: 'Lieu introuvable. Cherchez une adresse.' });
     }
     const job = await this.prisma.job.create({
       data: {
@@ -36,7 +48,9 @@ export class JobsService {
         workersNeeded: dto.workersNeeded,
         durationDays: dto.durationDays,
         startDate: new Date(`${dto.startDate}T00:00:00Z`),
-        locality: dto.locality.trim(),
+        locality,
+        address: place?.label ?? null,
+        locationVerified: !!place,
         lat: dto.lat,
         lng: dto.lng,
       },
@@ -46,8 +60,8 @@ export class JobsService {
   }
 
   async search(viewer: User, q: SearchJobsDto) {
-    const radiusKm = q.radiusKm ?? 25;
-    const box = boundingBox(q.lat, q.lng, radiusKm);
+    // No radius means every open job, nearest first.
+    const box = q.radiusKm ? boundingBox(q.lat, q.lng, q.radiusKm) : null;
     const rows = await this.prisma.$queryRaw<{ id: string; distance: number }[]>`
       SELECT id, distance FROM (
         SELECT "id",
@@ -58,14 +72,13 @@ export class JobsService {
         FROM "Job"
         WHERE "status" = 'OPEN'
           AND "startDate" >= ${todayLocal()}
-          AND "lat" BETWEEN ${box.minLat} AND ${box.maxLat}
-          AND "lng" BETWEEN ${box.minLng} AND ${box.maxLng}
+          ${box ? Prisma.sql`AND "lat" BETWEEN ${box.minLat} AND ${box.maxLat} AND "lng" BETWEEN ${box.minLng} AND ${box.maxLng}` : Prisma.empty}
           ${q.category ? Prisma.sql`AND "category" = ${q.category}::"JobCategory"` : Prisma.empty}
           ${q.payMode ? Prisma.sql`AND "payMode" = ${q.payMode}::"PayMode"` : Prisma.empty}
       ) s
-      WHERE distance <= ${radiusKm}
-      ORDER BY distance
-      LIMIT ${q.limit ?? 30}`;
+      ${q.radiusKm ? Prisma.sql`WHERE distance <= ${q.radiusKm}` : Prisma.empty}
+      ORDER BY distance, id
+      LIMIT ${q.limit ?? 30} OFFSET ${q.offset ?? 0}`;
 
     const jobs = await this.prisma.job.findMany({
       where: { id: { in: rows.map((r) => r.id) } },

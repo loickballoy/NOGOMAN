@@ -33,12 +33,50 @@ day at funding time. Later fee changes never affect missions already paid for.
 one, so the aggregator (CinetPay / PayDunya / Flutterwave for Orange Money, MTN, Moov, Wave and
 cards) can be plugged in behind `PaymentProvider` without touching the escrow logic.
 
+## Messages
+
+A worker and a farmer get one thread per application, from the moment the worker applies.
+Text is passed through a contact filter before it's stored. The filter masks phone numbers
+(digits, "O" for zero, spelled out in French, +225), emails, links and other apps (WhatsApp,
+Telegram…), and counts attempts per user (`contactFlagCount`). Voice notes are stored as files
+in `UPLOAD_DIR` (the `uploads` Docker volume) and served only to the two participants. They
+can't be filtered. The app polls for new messages every few seconds.
+
+Note: the daily database backup doesn't include voice notes. Back up the `uploads` volume too
+(`docker run --rm -v nogoman_uploads:/data -v $PWD/backups:/out alpine tar czf /out/uploads.tgz -C /data .`).
+
+## Farm locations
+
+The server names and checks every job location itself. When a farmer posts a job, the API
+looks up the coordinates in OpenStreetMap (Nominatim) and stores the place name (village or
+town) and full address, with `locationVerified: true`. Whatever label the phone sends is only a
+fallback for when the geocoder is unreachable. The app's address search goes through
+`GET /geo/search` and `GET /geo/reverse`.
+
+Set `GEOCODER_CONTACT` to your email (Nominatim's usage policy asks for one), and optionally
+`GEOCODE_COUNTRIES=ci` to limit address search to Côte d'Ivoire. Requests are throttled to one
+per second and cached for a day. For heavier traffic, self-host Nominatim and set
+`NOMINATIM_URL`.
+
 ## Privacy
 
 - Phone numbers are never returned for another user.
-- Farm coordinates are rounded to about 1 km until a worker is hired.
+- Farm coordinates are rounded to about 1 km, and the full address is hidden, until a worker is hired.
 - OTP codes and refresh tokens are stored hashed.
 - Refresh tokens rotate on every use. Reusing an old token logs out every session of that user.
+- Login codes are capped per number (`OTP_MAX_PER_DAY`), per IP, and for everyone together
+  (`SMS_DAILY_LIMIT`, against bots burning the SMS budget). Codes are deleted after 7 days.
+- Changing an existing payout number holds payouts for `PAYOUT_HOLD_HOURS` (48 h) and warns
+  the account owner by SMS, so a stolen phone or account can't redirect the money at once.
+- Payment webhooks must be signed, are applied once, and never activate escrow if the amount
+  reported by the provider differs from what was asked.
+- Admin routes answer only over Tailscale or the LAN (`ADMIN_OVER_INTERNET=false`). Every admin
+  call is logged.
+- `DELETE /me` deletes the account: name, number, location, payout number and messages are
+  erased, open jobs cancelled. Payment records stay, without a name, for accounting law. It is
+  refused while a mission is active or money is still on its way to the user.
+
+See [../SECURITY.md](../SECURITY.md) for the launch checklist.
 
 ## Run locally
 
@@ -65,11 +103,29 @@ npm run test:e2e                   # full flow against a real database whose nam
 TEST_DATABASE_URL=postgresql://user@host:5432/nogoman_test npm run test:e2e
 ```
 
+## Run on the homelab without a domain
+
+```bash
+cd backend
+./scripts/init-env.sh --local     # secrets generated, login codes in the logs, docs on, simulated payments
+docker compose up -d --build
+curl localhost:3000/health        # {"status":"ok"}
+```
+
+- Docs: http://localhost:3000/docs
+- Login codes: `docker compose logs -f api | grep "votre code"`
+- To reach the API from your phone or laptop over Tailscale, set `API_BIND=` to the server's
+  Tailscale IP (`tailscale ip -4`) and run `docker compose up -d` again. It stays private to your tailnet.
+
+When you have a domain, follow the steps below and switch `.env` to production settings.
+
 ## Deploy on the homelab
 
 1. **Install Docker** on the server and clone this repository.
 2. **Configure:** `cd backend && ./scripts/init-env.sh` creates `.env` with every secret generated. Then fill in:
-   - `SMS_PROVIDER=africastalking` and your Africa's Talking credentials.
+   - `SMS_PROVIDER=orange` with `ORANGE_CLIENT_ID` and `ORANGE_CLIENT_SECRET` (Orange Developer,
+     "SMS Côte d'Ivoire" API: reaches Orange, MTN and Moov numbers, prepaid bundles of about
+     7 FCFA per SMS). Africa's Talking also works (`SMS_PROVIDER=africastalking`).
    - `ADMIN_PHONES`: your own number in `+225…` form.
 3. **Create the tunnel.** In Cloudflare Zero Trust → Networks → Tunnels, create a tunnel and copy its token into `CLOUDFLARE_TUNNEL_TOKEN`. Add a public hostname such as `api.yourdomain.com` → `http://api:3000`.
    *Already running cloudflared for another project?* Reuse that tunnel instead: add the public
@@ -102,12 +158,13 @@ Full schema at `/docs`.
 | Area | Routes |
 |---|---|
 | Auth | `POST /auth/otp/request`, `POST /auth/otp/verify`, `POST /auth/refresh`, `POST /auth/logout` |
-| Profile | `GET /me`, `PATCH /me` (name, role once, location, mobile money number), `GET /users/:id`, `GET /users/:id/reviews` |
+| Profile | `GET /me`, `PATCH /me` (name, role once, location, mobile money number), `DELETE /me`, `GET /users/:id`, `GET /users/:id/reviews` |
 | Jobs | `POST /jobs`, `GET /jobs?lat&lng&radiusKm&category&payMode`, `GET /jobs/mine`, `GET /jobs/:id`, `PATCH /jobs/:id`, `POST /jobs/:id/cancel` |
 | Hiring | `POST /jobs/:id/applications`, `GET /jobs/:id/applications`, `GET /applications/mine`, `POST /applications/:id/{hire,reject,withdraw}` |
 | Escrow | `GET /jobs/:id/funding/quote`, `POST /jobs/:id/funding`, `GET /payments/:id`, `POST /webhooks/payments/:provider` |
 | Work | `GET /engagements/mine`, `GET /engagements/:id`, `POST /engagements/:id/cancel`, `POST /work-units/:id/{check-in,done,confirm,dispute}`, `POST /jobs/:id/confirm-day` |
 | Payouts | `GET /me/payouts` |
+| Messages | `GET /conversations`, `GET /conversations/unread`, `POST /applications/:id/conversation`, `GET/POST /conversations/:id/messages`, `POST /conversations/:id/voice`, `GET /messages/:id/audio`, `POST /conversations/:id/read` |
 | Reviews | `POST /engagements/:id/reviews` |
 | Admin | `GET /admin/disputes`, `POST /admin/work-units/:id/resolve`, `POST /admin/users/:id/kyc`, `GET /admin/ledger/trial-balance`, `POST /admin/payouts/run`, `POST /admin/work/auto-release` |
 
@@ -118,6 +175,8 @@ the app can show or read aloud.
 
 - [ ] Payment aggregator contract, then the real `PaymentProvider` (collections, payouts, webhook signature).
 - [ ] Smile ID verification, then set `REQUIRE_KYC_TO_TRANSACT=true`.
-- [ ] Chat with contact masking and in-app calls.
-- [ ] Off-site backups and uptime monitoring.
+- [x] Chat with contact masking and voice notes.
+- [ ] In-app calls (needs a development build).
+- [x] Real SMS provider (Orange SMS Côte d'Ivoire), abuse limits, account deletion.
+- [ ] Off-site, encrypted backups and uptime monitoring.
 - [ ] Terms of use and privacy policy filed with ARTCI (Ivorian data protection authority).

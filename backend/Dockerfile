@@ -20,6 +20,9 @@ COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --from=build --chown=node:node /app/prisma ./prisma
 COPY --chown=node:node package.json ./
+# Voice messages live here; mounted as a volume so they survive rebuilds.
+RUN mkdir -p /app/uploads && chown node:node /app/uploads
+ENV UPLOAD_DIR=/app/uploads
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \

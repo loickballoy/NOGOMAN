@@ -10,6 +10,7 @@ import { PayoutsService } from '../src/payouts/payouts.service';
 import { MockPaymentProvider } from '../src/payments/providers/mock-payment.provider';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { WorkService } from '../src/work/work.service';
+import { GEOCODER, Geocoder, Place } from '../src/geo/geocoder';
 
 // Daloa, and a point ~300 m away / ~10 km away.
 const FARM = { lat: 6.8774, lng: -6.4502 };
@@ -31,8 +32,17 @@ describe('Nogoman end-to-end flow', () => {
     return res.body as { accessToken: string; refreshToken: string; isNewUser: boolean; user: { id: string } };
   }
 
+  // Stands in for Nominatim: names every position Daloa, like the real geocoder would.
+  const daloa: Place = { label: 'Gonaté, Daloa, Haut-Sassandra, Côte d’Ivoire', locality: 'Daloa', region: 'Haut-Sassandra', countryCode: 'ci', lat: FARM.lat, lng: FARM.lng };
+  const fakeGeocoder: Geocoder = {
+    search: async (q) => (q.toLowerCase().includes('daloa') ? [daloa] : []),
+    reverse: async (lat, lng) => ({ ...daloa, lat, lng }),
+  };
+
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(GEOCODER).useValue(fakeGeocoder)
+      .compile();
     app = moduleRef.createNestApplication({ rawBody: true });
     configureApp(app);
     await app.init();
@@ -52,6 +62,12 @@ describe('Nogoman end-to-end flow', () => {
   let engagementId: string;
   let units: { id: string; workDate: string; status: string }[];
   const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+
+  it('does not force HTTPS sub-requests, so the docs work over plain HTTP on a LAN IP', async () => {
+    const res = await http().get('/health').expect(200);
+    expect(res.headers['content-security-policy']).toBeDefined();
+    expect(res.headers['content-security-policy']).not.toContain('upgrade-insecure-requests');
+  });
 
   it('rejects a wrong OTP and signs users up by phone', async () => {
     await http().post('/auth/otp/request').send({ phone: '07 08 12 34 56' }).expect(200);
@@ -88,18 +104,35 @@ describe('Nogoman end-to-end flow', () => {
     const res = await http().post('/jobs').set(auth(farmer.token)).send({
       title: 'Récolte de cacao', category: 'HARVEST', crop: 'Cacao', payMode: 'DAILY',
       rateXof: 4500, workersNeeded: 1, durationDays: 3, startDate: isoDate(todayLocal()),
-      locality: 'Daloa', ...FARM,
+      locality: 'Ma plantation', ...FARM,
     }).expect(201);
     jobId = res.body.id;
+    // The server names the place from the coordinates, ignoring the phone's label.
+    expect(res.body).toMatchObject({ locality: 'Daloa', locationVerified: true, address: daloa.label });
 
     const found = await http().get('/jobs').query({ ...NEAR, radiusKm: 10 }).set(auth(worker.token)).expect(200);
     expect(found.body).toHaveLength(1);
     expect(found.body[0]).toMatchObject({ id: jobId, workerNetXof: 4410, workerTotalNetXof: 13230, slotsLeft: 1 });
     expect(found.body[0].lat).toBe(6.88); // rounded for non-hired viewers
     expect(found.body[0].farmer.phone).toBeUndefined();
+    expect(found.body[0].address).toBeNull(); // full address only once hired
 
+    // From Abidjan (~300 km away): hidden by a 20 km radius, found when searching the whole country.
     const elsewhere = await http().get('/jobs').query({ lat: 5.35, lng: -4.0, radiusKm: 20 }).set(auth(worker.token)).expect(200);
     expect(elsewhere.body).toHaveLength(0);
+    const countrywide = await http().get('/jobs').query({ lat: 5.35, lng: -4.0 }).set(auth(worker.token)).expect(200);
+    expect(countrywide.body.map((j: { id: string }) => j.id)).toEqual([jobId]);
+    expect(countrywide.body[0].distanceKm).toBeGreaterThan(250);
+    const nextPage = await http().get('/jobs').query({ lat: 5.35, lng: -4.0, offset: 1 }).set(auth(worker.token)).expect(200);
+    expect(nextPage.body).toHaveLength(0);
+  });
+
+  it('searches and names places for the farm location step', async () => {
+    const found = await http().get('/geo/search').query({ q: 'Daloa' }).set(auth(farmer.token)).expect(200);
+    expect(found.body[0].locality).toBe('Daloa');
+    const named = await http().get('/geo/reverse').query(FARM).set(auth(farmer.token)).expect(200);
+    expect(named.body.locality).toBe('Daloa');
+    await http().get('/geo/search').query({ q: 'Daloa' }).expect(401);
   });
 
   it('requires a payout number before applying, then hires', async () => {
@@ -118,6 +151,56 @@ describe('Nogoman end-to-end flow', () => {
     const job = await http().get(`/jobs/${jobId}`).set(auth(worker.token)).expect(200);
     expect(job.body.status).toBe('FILLED');
     expect(job.body.lat).toBe(FARM.lat); // exact once hired
+    expect(job.body.address).toBe(daloa.label);
+  });
+
+  it('lets the worker and the farmer talk, with contact details masked', async () => {
+    const appId = (await http().get('/applications/mine').set(auth(worker.token)).expect(200)).body[0].id;
+    const conv = await http().post(`/applications/${appId}/conversation`).set(auth(worker.token)).expect(201);
+    const again = await http().post(`/applications/${appId}/conversation`).set(auth(farmer.token)).expect(201);
+    expect(again.body.id).toBe(conv.body.id); // one thread per application
+
+    const sent = await http().post(`/conversations/${conv.body.id}/messages`).set(auth(worker.token))
+      .send({ text: 'Bonjour, appelle-moi au 05 44 33 22 11 ou sur WhatsApp' }).expect(201);
+    expect(sent.body).toMatchObject({ kind: 'TEXT', mine: true, masked: true });
+    expect(sent.body.text).not.toMatch(/44 33|whatsapp/i);
+
+    const list = await http().get('/conversations').set(auth(farmer.token)).expect(200);
+    expect(list.body[0]).toMatchObject({ id: conv.body.id, unread: 1, other: { name: 'Moussa Koné' } });
+    expect((await http().get('/conversations/unread').set(auth(farmer.token))).body.count).toBe(1);
+
+    const voice = await http().post(`/conversations/${conv.body.id}/voice`).set(auth(farmer.token))
+      .field('durationMs', '4200').attach('audio', Buffer.from('fake-audio-bytes'), { filename: 'note.m4a', contentType: 'audio/mp4' })
+      .expect(201);
+    expect(voice.body).toMatchObject({ kind: 'VOICE', audioMs: 4200 });
+    const audio = await http().get(voice.body.audioUrl).set(auth(worker.token)).expect(200);
+    expect(audio.headers['content-type']).toContain('audio/mp4');
+    expect(audio.headers['cross-origin-resource-policy']).toBe('cross-origin');
+    // iOS's player asks for byte ranges.
+    const part = await http().get(voice.body.audioUrl).set(auth(worker.token)).set('Range', 'bytes=0-3').expect(206);
+    expect(part.headers['content-range']).toMatch(/^bytes 0-3\//);
+    await http().post(`/conversations/${conv.body.id}/voice`).set(auth(farmer.token))
+      .field('durationMs', '4200').attach('audio', Buffer.from('<script>'), { filename: 'x.html', contentType: 'text/html' }).expect(400);
+    // What the app sends: the raw bytes as the body.
+    const rawVoice = await http().post(`/conversations/${conv.body.id}/voice`).query({ durationMs: 2500 }).set(auth(worker.token))
+      .set('Content-Type', 'audio/mp4').send(Buffer.from('raw-audio-bytes')).expect(201);
+    expect(rawVoice.body).toMatchObject({ kind: 'VOICE', audioMs: 2500, mine: true });
+    const rawAudio = await http().get(rawVoice.body.audioUrl).set(auth(farmer.token)).buffer(true).parse((res, cb) => {
+      const chunks: Buffer[] = []; res.on('data', (c: Buffer) => chunks.push(c)); res.on('end', () => cb(null, Buffer.concat(chunks)));
+    }).expect(200);
+    expect((rawAudio.body as Buffer).toString()).toBe('raw-audio-bytes');
+    // An unlabelled part is accepted when the file name says it's audio.
+    await http().post(`/conversations/${conv.body.id}/voice`).set(auth(farmer.token))
+      .field('durationMs', '1500').attach('audio', Buffer.from('fake'), { filename: 'recording-1.m4a', contentType: 'application/octet-stream' }).expect(201);
+
+    const thread = await http().get(`/conversations/${conv.body.id}/messages`).set(auth(farmer.token)).expect(200);
+    expect(thread.body.map((m: { kind: string; mine: boolean }) => [m.kind, m.mine])).toEqual([['TEXT', false], ['VOICE', true], ['VOICE', false], ['VOICE', true]]);
+    await http().post(`/conversations/${conv.body.id}/read`).set(auth(farmer.token)).expect(204);
+    expect((await http().get('/conversations/unread').set(auth(farmer.token))).body.count).toBe(0);
+
+    // Nobody else can read the thread or the voice note.
+    await http().get(`/conversations/${conv.body.id}/messages`).set(auth(admin.token)).expect(403);
+    await http().get(voice.body.audioUrl).set(auth(admin.token)).expect(403);
   });
 
   it('collects the escrow and only activates the work on a verified webhook', async () => {
@@ -130,9 +213,17 @@ describe('Nogoman end-to-end flow', () => {
     const again = await http().post(`/jobs/${jobId}/funding`).set(auth(farmer.token)).send({}).expect(201);
     expect(again.body.id).toBe(pay.body.id); // no double charge
 
-    const body = JSON.stringify({ eventId: 'evt_1', kind: 'collection', providerRef: pay.body.providerRef, status: 'SUCCEEDED' });
+    const body = JSON.stringify({ eventId: 'evt_1', kind: 'collection', providerRef: pay.body.providerRef, status: 'SUCCEEDED', amountXof: 13770 });
     await http().post('/webhooks/payments/mock').set('Content-Type', 'application/json')
       .set('x-mock-signature', 'f'.repeat(64)).send(body).expect(401);
+
+    // A provider reporting less money than asked never activates the escrow.
+    const short = JSON.stringify({ eventId: 'evt_short', kind: 'collection', providerRef: pay.body.providerRef, status: 'SUCCEEDED', amountXof: 100 });
+    await http().post('/webhooks/payments/mock').set('Content-Type', 'application/json')
+      .set('x-mock-signature', app.get(MockPaymentProvider).sign(short)).send(short).expect(200);
+    const stillPending = await http().get(`/payments/${pay.body.id}`).set(auth(farmer.token)).expect(200);
+    expect(stillPending.body.status).toBe('PENDING');
+    expect(await ledger.balance(Accounts.escrow(jobId).code)).toBe(0);
 
     const signature = app.get(MockPaymentProvider).sign(body);
     await http().post('/webhooks/payments/mock').set('Content-Type', 'application/json')
@@ -262,6 +353,52 @@ describe('Nogoman end-to-end flow', () => {
     expect(await ledger.balance(Accounts.escrow(job.body.id).code)).toBe(0);
     const reopened = await http().get(`/jobs/${job.body.id}`).set(auth(farmer.token)).expect(200);
     expect(reopened.body.status).toBe('OPEN');
+  });
+
+  it('holds payouts when the payout number changes, and warns the owner by SMS', async () => {
+    const same = await http().patch('/me').set(auth(worker.token)).send({ payoutOperator: 'ORANGE_MONEY', payoutPhone: '0544332211' }).expect(200);
+    expect(same.body.payout.heldUntil).toBeNull();
+
+    const changed = await http().patch('/me').set(auth(worker.token)).send({ payoutOperator: 'MTN_MOMO', payoutPhone: '05 77 66 55 44' }).expect(200);
+    expect(new Date(changed.body.payout.heldUntil).getTime()).toBeGreaterThan(Date.now() + 47 * 3600 * 1000);
+    expect(sms.lastTo('+2250544332211')).toContain('numéro de paiement a été modifié');
+
+    await prisma.$transaction((tx) => ledger.post(tx, 'RELEASE', 'test-hold-credit', [
+      { account: Accounts.clearing('mock'), amountXof: -500 },
+      { account: Accounts.payable(worker.id), amountXof: 500 },
+    ]));
+    const payouts = app.get(PayoutsService);
+    expect(await payouts.payUser(worker.id)).toBe(false);
+
+    await prisma.user.update({ where: { id: worker.id }, data: { payoutHoldUntil: new Date(Date.now() - 1000) } });
+    expect(await payouts.payUser(worker.id)).toBe(true);
+    const payout = await prisma.payout.findFirstOrThrow({ where: { userId: worker.id, status: 'PENDING' } });
+    expect(payout).toMatchObject({ operator: 'MTN_MOMO', phone: '+2250577665544' });
+    await http().post(`/dev/payments/payout/${payout.id}/simulate`).send({ status: 'SUCCEEDED' }).expect(200);
+  });
+
+  it('answers admin routes only over the private network', async () => {
+    await http().get('/admin/disputes').set(auth(admin.token)).expect(200);
+    await http().get('/admin/disputes').set(auth(admin.token)).set('cf-connecting-ip', '203.0.113.9').expect(404);
+    await http().get('/admin/disputes').set(auth(worker.token)).expect(403);
+  });
+
+  it('deletes an account on request, erases personal data and frees the phone number', async () => {
+    const blocked = await http().delete('/me').set(auth(farmer.token)).expect(400);
+    expect(['ACTIVE_MISSIONS', 'MONEY_PENDING']).toContain(blocked.body.code);
+
+    const u = await login('07 99 88 77 66');
+    await http().patch('/me').set(auth(u.accessToken)).send({ name: 'Awa Koné', role: 'WORKER', locality: 'Daloa' }).expect(200);
+    await http().delete('/me').set(auth(u.accessToken)).expect(204);
+    await http().get('/me').set(auth(u.accessToken)).expect(401);
+    await http().post('/auth/refresh').send({ refreshToken: u.refreshToken }).expect(401);
+    await http().get(`/users/${u.user.id}`).set(auth(farmer.token)).expect(404);
+    const erased = await prisma.user.findUniqueOrThrow({ where: { id: u.user.id } });
+    expect(erased).toMatchObject({ name: null, locality: null, payoutPhone: null, phone: `deleted:${u.user.id}` });
+
+    const again = await login('07 99 88 77 66');
+    expect(again.isNewUser).toBe(true);
+    expect(again.user.id).not.toBe(u.user.id);
   });
 
   it('refuses unbalanced ledger entries at the database level', async () => {

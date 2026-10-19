@@ -9,10 +9,12 @@ import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard, RolesGuard } from './common/guards';
 import { AppConfig } from './config/app-config';
 import { CoreModule } from './config/core.module';
+import { GeoModule } from './geo/geo.module';
 import { HealthController } from './health/health.controller';
 import { HiringModule } from './hiring/hiring.module';
 import { JobsModule } from './jobs/jobs.module';
 import { LedgerModule } from './ledger/ledger.module';
+import { MessagesModule } from './messages/messages.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ReviewsModule } from './reviews/reviews.controller';
@@ -32,6 +34,7 @@ import { WorkModule } from './work/work.module';
     ScheduleModule.forRoot(),
     PrismaModule,
     LedgerModule,
+    GeoModule,
     AuthModule,
     UsersModule,
     JobsModule,
@@ -39,6 +42,7 @@ import { WorkModule } from './work/work.module';
     PaymentsModule,
     WorkModule,
     ReviewsModule,
+    MessagesModule,
     AdminModule,
   ],
   controllers: [HealthController],

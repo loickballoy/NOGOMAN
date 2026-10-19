@@ -5,7 +5,7 @@ import { ApiBearerAuth, ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { Role, User } from '@prisma/client';
 import { Request } from 'express';
-import { IsIn, IsOptional, IsString } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString } from 'class-validator';
 import { AppConfig } from '../config/app-config';
 import { CurrentUser, Public, Roles } from '../common/decorators';
 import { randomToken } from '../common/crypto';
@@ -18,6 +18,7 @@ import { MockPaymentProvider } from './providers/mock-payment.provider';
 class SimulateDto {
   @IsIn(['SUCCEEDED', 'FAILED']) status: 'SUCCEEDED' | 'FAILED';
   @IsOptional() @IsString() reason?: string;
+  @IsOptional() @IsInt() amountXof?: number;
 }
 
 @ApiTags('payments')
@@ -79,6 +80,7 @@ export class PaymentsController {
       providerRef: record.providerRef,
       status: dto.status,
       reason: dto.reason,
+      amountXof: dto.amountXof,
     });
     return this.payments.handleWebhook('mock', { 'x-mock-signature': this.mock.sign(body) }, Buffer.from(body));
   }

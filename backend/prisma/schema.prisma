@@ -97,6 +97,11 @@ enum LedgerAccountType {
   PLATFORM_REVENUE
 }
 
+enum MessageKind {
+  TEXT
+  VOICE
+}
+
 enum JournalKind {
   FUNDING
   RELEASE
@@ -106,33 +111,41 @@ enum JournalKind {
 }
 
 model User {
-  id            String               @id @default(cuid())
-  phone         String               @unique // E.164, never exposed to other users
-  name          String?
-  role          Role?
-  bio           String?
-  locality      String?
-  lat           Float?
-  lng           Float?
-  kycLevel      Int                  @default(0) // 0 phone, 1 ID + selfie, 2 business
-  kycStatus     KycStatus            @default(NOT_STARTED)
-  payoutOperator MobileMoneyOperator?
-  payoutPhone   String?
-  ratingSum     Int                  @default(0)
-  ratingCount   Int                  @default(0)
-  disabledAt    DateTime?
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
+  id              String               @id @default(cuid())
+  phone           String               @unique // E.164, never exposed to other users
+  name            String?
+  role            Role?
+  bio             String?
+  locality        String?
+  lat             Float?
+  lng             Float?
+  kycLevel        Int                  @default(0) // 0 phone, 1 ID + selfie, 2 business
+  kycStatus       KycStatus            @default(NOT_STARTED)
+  payoutOperator  MobileMoneyOperator?
+  payoutPhone     String?
+  /// Set when an existing payout number is changed: payouts wait until then, in case the
+  /// change was made by someone who took over the phone or the account.
+  payoutHoldUntil DateTime?
+  ratingSum       Int                  @default(0)
+  ratingCount     Int                  @default(0)
+  disabledAt      DateTime?
+  /// The user deleted their account: personal data is erased, money records are kept.
+  deletedAt       DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
 
-  sessions        Session[]
-  jobs            Job[]
-  applications    Application[]
-  engagements     Engagement[]
-  payments        Payment[]
-  payouts         Payout[]
-  reviewsWritten  Review[]           @relation("ReviewAuthor")
-  reviewsReceived Review[]           @relation("ReviewSubject")
-  ledgerAccounts  LedgerAccount[]
+  sessions         Session[]
+  jobs             Job[]
+  applications     Application[]
+  engagements      Engagement[]
+  payments         Payment[]
+  payouts          Payout[]
+  reviewsWritten   Review[]        @relation("ReviewAuthor")
+  reviewsReceived  Review[]        @relation("ReviewSubject")
+  ledgerAccounts   LedgerAccount[]
+  messages         Message[]
+  /// Times this user tried to share a phone number, email or link in chat.
+  contactFlagCount Int             @default(0)
 }
 
 model OtpChallenge {
@@ -161,28 +174,30 @@ model Session {
 }
 
 model Job {
-  id            String      @id @default(cuid())
-  farmerId      String
-  title         String
-  description   String      @default("")
-  category      JobCategory
-  crop          String?
-  payMode       PayMode
-  rateXof       Int // per day (DAILY) or per worker for the whole task (TASK)
-  workersNeeded Int
-  durationDays  Int // number of paid days (DAILY) or estimated length (TASK)
-  startDate     DateTime    @db.Date
-  locality      String
-  lat           Float
-  lng           Float
-  status        JobStatus   @default(OPEN)
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id               String      @id @default(cuid())
+  farmerId         String
+  title            String
+  description      String      @default("")
+  category         JobCategory
+  crop             String?
+  payMode          PayMode
+  rateXof          Int // per day (DAILY) or per worker for the whole task (TASK)
+  workersNeeded    Int
+  durationDays     Int // number of paid days (DAILY) or estimated length (TASK)
+  startDate        DateTime    @db.Date
+  locality         String // short place name shown to everyone ("Étampes", "Daloa")
+  address          String? // full geocoded address, shown only to the farmer and hired workers
+  locationVerified Boolean     @default(false) // the server matched lat/lng to a real place
+  lat              Float
+  lng              Float
+  status           JobStatus   @default(OPEN)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 
-  farmer       User          @relation(fields: [farmerId], references: [id])
-  applications Application[]
-  engagements  Engagement[]
-  payments     Payment[]
+  farmer         User            @relation(fields: [farmerId], references: [id])
+  applications   Application[]
+  engagements    Engagement[]
+  payments       Payment[]
   ledgerAccounts LedgerAccount[]
 
   @@index([status, lat, lng])
@@ -198,9 +213,10 @@ model Application {
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
 
-  job        Job         @relation(fields: [jobId], references: [id])
-  worker     User        @relation(fields: [workerId], references: [id])
-  engagement Engagement?
+  job          Job           @relation(fields: [jobId], references: [id])
+  worker       User          @relation(fields: [workerId], references: [id])
+  engagement   Engagement?
+  conversation Conversation?
 
   @@unique([jobId, workerId])
 }
@@ -258,20 +274,20 @@ model WorkUnit {
 }
 
 model Payment {
-  id          String              @id @default(cuid())
-  payerId     String
-  jobId       String
-  provider    String
-  providerRef String?             @unique
-  operator    MobileMoneyOperator?
-  phone       String?
-  amountXof   Int
-  feeXof      Int
-  status      PaymentStatus       @default(PENDING)
-  checkoutUrl String?
+  id            String               @id @default(cuid())
+  payerId       String
+  jobId         String
+  provider      String
+  providerRef   String?              @unique
+  operator      MobileMoneyOperator?
+  phone         String?
+  amountXof     Int
+  feeXof        Int
+  status        PaymentStatus        @default(PENDING)
+  checkoutUrl   String?
   failureReason String?
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
 
   payer       User         @relation(fields: [payerId], references: [id])
   job         Job          @relation(fields: [jobId], references: [id])
@@ -351,11 +367,48 @@ model Review {
 }
 
 model WebhookEvent {
-  id          String   @id @default(cuid())
-  provider    String
-  eventId     String
-  payload     Json
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  provider  String
+  eventId   String
+  payload   Json
+  createdAt DateTime @default(now())
 
   @@unique([provider, eventId])
+}
+
+/// One thread per application: the worker and the farmer can talk from the moment
+/// the worker applies. Phone numbers are masked; voice notes are kept on the server.
+model Conversation {
+  id            String    @id @default(cuid())
+  applicationId String    @unique
+  jobId         String
+  farmerId      String
+  workerId      String
+  lastMessageAt DateTime?
+  farmerReadAt  DateTime?
+  workerReadAt  DateTime?
+  createdAt     DateTime  @default(now())
+
+  application Application @relation(fields: [applicationId], references: [id])
+  messages    Message[]
+
+  @@index([farmerId, lastMessageAt])
+  @@index([workerId, lastMessageAt])
+}
+
+model Message {
+  id             String      @id @default(cuid())
+  conversationId String
+  senderId       String
+  kind           MessageKind
+  text           String? // already masked
+  audioPath      String? // file name under UPLOAD_DIR
+  audioMs        Int?
+  flags          String[] // what the contact filter removed: PHONE, EMAIL, LINK, APP
+  createdAt      DateTime    @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  sender       User         @relation(fields: [senderId], references: [id])
+
+  @@index([conversationId, createdAt])
 }
