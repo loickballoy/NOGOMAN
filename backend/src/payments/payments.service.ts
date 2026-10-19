@@ -111,10 +111,16 @@ export class PaymentsService {
   }
 
   async applyEvent(event: WebhookEvent) {
-    if (event.kind === 'payout') return this.payouts.settle(event.providerRef, event.status, event.reason);
+    if (event.kind === 'payout') return this.payouts.settle(event.providerRef, event.status, event.reason, event.amountXof);
     const payment = await this.prisma.payment.findUnique({ where: { providerRef: event.providerRef } });
     if (!payment) {
       this.logger.warn(`webhook for unknown collection ${event.providerRef}`);
+      return;
+    }
+    // Never activate escrow on a smaller amount than the farmer was asked for (tampered or
+    // partial payment). The payment stays pending for an admin to look at.
+    if (event.status === 'SUCCEEDED' && event.amountXof !== undefined && event.amountXof !== payment.amountXof) {
+      this.logger.error(`collection ${payment.id}: provider reports ${event.amountXof} XOF, expected ${payment.amountXof}. Not settled.`);
       return;
     }
     if (event.status === 'SUCCEEDED') return this.settleCollection(payment.id);

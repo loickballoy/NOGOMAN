@@ -84,6 +84,8 @@ export function useApiMutation<TVars = void, TRes = unknown>(fn: (vars: TVars) =
   });
 }
 
+export const useDeleteAccount = () => useMutation({ mutationFn: () => api<void>('/me', { method: 'DELETE' }) });
+
 export const useUpdateMe = () => {
   const qc = useQueryClient();
   return useMutation({

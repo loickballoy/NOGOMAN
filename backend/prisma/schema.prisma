@@ -111,23 +111,28 @@ enum JournalKind {
 }
 
 model User {
-  id             String               @id @default(cuid())
-  phone          String               @unique // E.164, never exposed to other users
-  name           String?
-  role           Role?
-  bio            String?
-  locality       String?
-  lat            Float?
-  lng            Float?
-  kycLevel       Int                  @default(0) // 0 phone, 1 ID + selfie, 2 business
-  kycStatus      KycStatus            @default(NOT_STARTED)
-  payoutOperator MobileMoneyOperator?
-  payoutPhone    String?
-  ratingSum      Int                  @default(0)
-  ratingCount    Int                  @default(0)
-  disabledAt     DateTime?
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
+  id              String               @id @default(cuid())
+  phone           String               @unique // E.164, never exposed to other users
+  name            String?
+  role            Role?
+  bio             String?
+  locality        String?
+  lat             Float?
+  lng             Float?
+  kycLevel        Int                  @default(0) // 0 phone, 1 ID + selfie, 2 business
+  kycStatus       KycStatus            @default(NOT_STARTED)
+  payoutOperator  MobileMoneyOperator?
+  payoutPhone     String?
+  /// Set when an existing payout number is changed: payouts wait until then, in case the
+  /// change was made by someone who took over the phone or the account.
+  payoutHoldUntil DateTime?
+  ratingSum       Int                  @default(0)
+  ratingCount     Int                  @default(0)
+  disabledAt      DateTime?
+  /// The user deleted their account: personal data is erased, money records are kept.
+  deletedAt       DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
 
   sessions         Session[]
   jobs             Job[]

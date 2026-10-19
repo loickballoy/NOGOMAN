@@ -64,6 +64,19 @@ per second and cached for a day. For heavier traffic, self-host Nominatim and se
 - Farm coordinates are rounded to about 1 km, and the full address is hidden, until a worker is hired.
 - OTP codes and refresh tokens are stored hashed.
 - Refresh tokens rotate on every use. Reusing an old token logs out every session of that user.
+- Login codes are capped per number (`OTP_MAX_PER_DAY`), per IP, and for everyone together
+  (`SMS_DAILY_LIMIT`, against bots burning the SMS budget). Codes are deleted after 7 days.
+- Changing an existing payout number holds payouts for `PAYOUT_HOLD_HOURS` (48 h) and warns
+  the account owner by SMS, so a stolen phone or account can't redirect the money at once.
+- Payment webhooks must be signed, are applied once, and never activate escrow if the amount
+  reported by the provider differs from what was asked.
+- Admin routes answer only over Tailscale or the LAN (`ADMIN_OVER_INTERNET=false`). Every admin
+  call is logged.
+- `DELETE /me` deletes the account: name, number, location, payout number and messages are
+  erased, open jobs cancelled. Payment records stay, without a name, for accounting law. It is
+  refused while a mission is active or money is still on its way to the user.
+
+See [../SECURITY.md](../SECURITY.md) for the launch checklist.
 
 ## Run locally
 
@@ -110,7 +123,9 @@ When you have a domain, follow the steps below and switch `.env` to production s
 
 1. **Install Docker** on the server and clone this repository.
 2. **Configure:** `cd backend && ./scripts/init-env.sh` creates `.env` with every secret generated. Then fill in:
-   - `SMS_PROVIDER=africastalking` and your Africa's Talking credentials.
+   - `SMS_PROVIDER=orange` with `ORANGE_CLIENT_ID` and `ORANGE_CLIENT_SECRET` (Orange Developer,
+     "SMS Côte d'Ivoire" API: reaches Orange, MTN and Moov numbers, prepaid bundles of about
+     7 FCFA per SMS). Africa's Talking also works (`SMS_PROVIDER=africastalking`).
    - `ADMIN_PHONES`: your own number in `+225…` form.
 3. **Create the tunnel.** In Cloudflare Zero Trust → Networks → Tunnels, create a tunnel and copy its token into `CLOUDFLARE_TUNNEL_TOKEN`. Add a public hostname such as `api.yourdomain.com` → `http://api:3000`.
    *Already running cloudflared for another project?* Reuse that tunnel instead: add the public
@@ -143,7 +158,7 @@ Full schema at `/docs`.
 | Area | Routes |
 |---|---|
 | Auth | `POST /auth/otp/request`, `POST /auth/otp/verify`, `POST /auth/refresh`, `POST /auth/logout` |
-| Profile | `GET /me`, `PATCH /me` (name, role once, location, mobile money number), `GET /users/:id`, `GET /users/:id/reviews` |
+| Profile | `GET /me`, `PATCH /me` (name, role once, location, mobile money number), `DELETE /me`, `GET /users/:id`, `GET /users/:id/reviews` |
 | Jobs | `POST /jobs`, `GET /jobs?lat&lng&radiusKm&category&payMode`, `GET /jobs/mine`, `GET /jobs/:id`, `PATCH /jobs/:id`, `POST /jobs/:id/cancel` |
 | Hiring | `POST /jobs/:id/applications`, `GET /jobs/:id/applications`, `GET /applications/mine`, `POST /applications/:id/{hire,reject,withdraw}` |
 | Escrow | `GET /jobs/:id/funding/quote`, `POST /jobs/:id/funding`, `GET /payments/:id`, `POST /webhooks/payments/:provider` |
@@ -162,5 +177,6 @@ the app can show or read aloud.
 - [ ] Smile ID verification, then set `REQUIRE_KYC_TO_TRANSACT=true`.
 - [x] Chat with contact masking and voice notes.
 - [ ] In-app calls (needs a development build).
-- [ ] Off-site backups and uptime monitoring.
+- [x] Real SMS provider (Orange SMS Côte d'Ivoire), abuse limits, account deletion.
+- [ ] Off-site, encrypted backups and uptime monitoring.
 - [ ] Terms of use and privacy policy filed with ARTCI (Ivorian data protection authority).

@@ -1,8 +1,11 @@
-import { Body, Controller, Get, Module, Param, Post } from '@nestjs/common';
+import {
+  Body, CanActivate, Controller, ExecutionContext, Get, Injectable, Logger, Module, NotFoundException, Param, Post, UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiProperty, ApiTags } from '@nestjs/swagger';
 import { KycStatus, Role } from '@prisma/client';
 import { IsEnum, IsIn, IsInt, Max, Min } from 'class-validator';
 import { Roles } from '../common/decorators';
+import { AppConfig } from '../config/app-config';
 import { LedgerService } from '../ledger/ledger.service';
 import { PayoutsModule } from '../payouts/payouts.module';
 import { PayoutsService } from '../payouts/payouts.service';
@@ -19,9 +22,32 @@ class KycDto {
   @ApiProperty({ enum: KycStatus }) @IsEnum(KycStatus) status: KycStatus;
 }
 
+/**
+ * Admin routes move money (dispute outcomes) and change identity status, so a stolen admin
+ * phone must not be enough. By default they only answer over Tailscale or the LAN: anything
+ * that came through Cloudflare carries cf-connecting-ip and gets a 404. Every call is logged.
+ */
+@Injectable()
+export class AdminAccessGuard implements CanActivate {
+  private readonly logger = new Logger('Admin');
+
+  constructor(private readonly config: AppConfig) {}
+
+  canActivate(ctx: ExecutionContext): boolean {
+    const req = ctx.switchToHttp().getRequest();
+    if (req.headers['cf-connecting-ip'] && !this.config.adminOverInternet) {
+      this.logger.warn(`admin route refused over the internet: ${req.method} ${req.path} by ${req.user?.id}`);
+      throw new NotFoundException();
+    }
+    this.logger.log(`${req.user?.id} ${req.method} ${req.path} ${req.method === 'GET' ? '' : JSON.stringify(req.body ?? {})}`.trim());
+    return true;
+  }
+}
+
 @ApiTags('admin')
 @ApiBearerAuth()
 @Roles(Role.ADMIN)
+@UseGuards(AdminAccessGuard)
 @Controller('admin')
 export class AdminController {
   constructor(

@@ -9,7 +9,7 @@ import { API_URL, errorMessage } from '@/lib/api';
 import { useAuth, useMe } from '@/lib/auth';
 import { operator as op } from '@/lib/catalog';
 import { fcfa, groupPhone, initials, shortDate } from '@/lib/format';
-import { usePayouts, useUpdateMe } from '@/lib/queries';
+import { useDeleteAccount, usePayouts, useUpdateMe } from '@/lib/queries';
 import { colors, space } from '@/lib/theme';
 import { Operator } from '@/lib/types';
 
@@ -18,7 +18,9 @@ export default function Profile() {
   const { setUser, signOut } = useAuth();
   const payouts = usePayouts();
   const update = useUpdateMe();
+  const deletion = useDeleteAccount();
   const [editing, setEditing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [operator, setOperator] = useState<Operator | null>(me.payout?.operator ?? null);
   const [digits, setDigits] = useState(me.phone.replace(/^\+225/, ''));
 
@@ -79,12 +81,22 @@ export default function Profile() {
             <OperatorPicker value={operator} onChange={setOperator} />
             <T style={{ fontSize: 22, fontWeight: '800' }}>+225 {groupPhone(digits) || '…'}</T>
             <Keypad value={digits} onChange={setDigits} maxLength={10} />
+            {me.payout && (
+              <T variant="tiny" color={colors.muted}>
+                Par sécurité, les versements sont suspendus 48 h après un changement de numéro, et vous recevez un SMS.
+              </T>
+            )}
             {update.error && <Banner tone="alert">{errorMessage(update.error)}</Banner>}
             <Button label="Enregistrer" disabled={!operator || digits.length !== 10} loading={update.isPending} onPress={save} />
             <Button variant="ghost" label="Annuler" onPress={() => setEditing(false)} />
           </View>
         )}
 
+        {me.payout?.heldUntil && (
+          <Banner tone="pending" title="Numéro modifié">
+            Par sécurité, les versements reprennent le {shortDate(me.payout.heldUntil)} à {new Date(me.payout.heldUntil).getUTCHours()} h. Si ce n’est pas vous, contactez Nogoman.
+          </Banner>
+        )}
         {balance > 0 && <Banner tone="pending" title={`${fcfa(balance)} FCFA`}>en cours de versement sur votre mobile money.</Banner>}
         {(payouts.data?.payouts ?? []).slice(0, 5).map((p) => (
           <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6 }}>
@@ -98,6 +110,20 @@ export default function Profile() {
         ))}
 
         <Button variant="secondary" icon="logout" label="Se déconnecter" onPress={signOut} />
+        {!confirmDelete ? (
+          <Button variant="ghost" label="Supprimer mon compte" onPress={() => setConfirmDelete(true)} />
+        ) : (
+          <Card style={{ gap: space.md }}>
+            <T variant="bodyStrong">Supprimer votre compte ?</T>
+            <T variant="small" color={colors.muted}>
+              Votre nom, votre numéro et vos messages seront effacés. Vos offres ouvertes seront annulées. Les reçus de paiement sont gardés, sans votre nom, comme la loi l’exige.
+            </T>
+            {deletion.error && <Banner tone="alert">{errorMessage(deletion.error)}</Banner>}
+            <Button variant="danger" icon="trash" label="Oui, supprimer" loading={deletion.isPending}
+              onPress={() => deletion.mutate(undefined, { onSuccess: () => { signOut(); } })} />
+            <Button variant="ghost" label="Annuler" onPress={() => { setConfirmDelete(false); deletion.reset(); }} />
+          </Card>
+        )}
         {__DEV__ && <T variant="tiny" color={colors.muted} style={{ textAlign: 'center' }}>API : {API_URL}</T>}
       </ScrollView>
     </SafeAreaView>

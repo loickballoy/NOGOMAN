@@ -4,6 +4,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { AfricasTalkingSmsProvider } from './sms/africastalking-sms.provider';
 import { ConsoleSmsProvider } from './sms/console-sms.provider';
+import { OrangeSmsProvider } from './sms/orange-sms.provider';
 import { SMS_PROVIDER } from './sms/sms.provider';
 
 @Module({
@@ -15,7 +16,9 @@ import { SMS_PROVIDER } from './sms/sms.provider';
       provide: SMS_PROVIDER,
       inject: [AppConfig, ConsoleSmsProvider],
       useFactory: (config: AppConfig, consoleProvider: ConsoleSmsProvider) =>
-        config.smsProvider === 'africastalking' ? new AfricasTalkingSmsProvider(config) : consoleProvider,
+        config.smsProvider === 'orange' ? new OrangeSmsProvider(config)
+          : config.smsProvider === 'africastalking' ? new AfricasTalkingSmsProvider(config)
+            : consoleProvider,
     },
   ],
   exports: [SMS_PROVIDER, ConsoleSmsProvider],

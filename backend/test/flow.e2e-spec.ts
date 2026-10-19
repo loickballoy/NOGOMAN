@@ -213,9 +213,17 @@ describe('Nogoman end-to-end flow', () => {
     const again = await http().post(`/jobs/${jobId}/funding`).set(auth(farmer.token)).send({}).expect(201);
     expect(again.body.id).toBe(pay.body.id); // no double charge
 
-    const body = JSON.stringify({ eventId: 'evt_1', kind: 'collection', providerRef: pay.body.providerRef, status: 'SUCCEEDED' });
+    const body = JSON.stringify({ eventId: 'evt_1', kind: 'collection', providerRef: pay.body.providerRef, status: 'SUCCEEDED', amountXof: 13770 });
     await http().post('/webhooks/payments/mock').set('Content-Type', 'application/json')
       .set('x-mock-signature', 'f'.repeat(64)).send(body).expect(401);
+
+    // A provider reporting less money than asked never activates the escrow.
+    const short = JSON.stringify({ eventId: 'evt_short', kind: 'collection', providerRef: pay.body.providerRef, status: 'SUCCEEDED', amountXof: 100 });
+    await http().post('/webhooks/payments/mock').set('Content-Type', 'application/json')
+      .set('x-mock-signature', app.get(MockPaymentProvider).sign(short)).send(short).expect(200);
+    const stillPending = await http().get(`/payments/${pay.body.id}`).set(auth(farmer.token)).expect(200);
+    expect(stillPending.body.status).toBe('PENDING');
+    expect(await ledger.balance(Accounts.escrow(jobId).code)).toBe(0);
 
     const signature = app.get(MockPaymentProvider).sign(body);
     await http().post('/webhooks/payments/mock').set('Content-Type', 'application/json')
@@ -345,6 +353,52 @@ describe('Nogoman end-to-end flow', () => {
     expect(await ledger.balance(Accounts.escrow(job.body.id).code)).toBe(0);
     const reopened = await http().get(`/jobs/${job.body.id}`).set(auth(farmer.token)).expect(200);
     expect(reopened.body.status).toBe('OPEN');
+  });
+
+  it('holds payouts when the payout number changes, and warns the owner by SMS', async () => {
+    const same = await http().patch('/me').set(auth(worker.token)).send({ payoutOperator: 'ORANGE_MONEY', payoutPhone: '0544332211' }).expect(200);
+    expect(same.body.payout.heldUntil).toBeNull();
+
+    const changed = await http().patch('/me').set(auth(worker.token)).send({ payoutOperator: 'MTN_MOMO', payoutPhone: '05 77 66 55 44' }).expect(200);
+    expect(new Date(changed.body.payout.heldUntil).getTime()).toBeGreaterThan(Date.now() + 47 * 3600 * 1000);
+    expect(sms.lastTo('+2250544332211')).toContain('numéro de paiement a été modifié');
+
+    await prisma.$transaction((tx) => ledger.post(tx, 'RELEASE', 'test-hold-credit', [
+      { account: Accounts.clearing('mock'), amountXof: -500 },
+      { account: Accounts.payable(worker.id), amountXof: 500 },
+    ]));
+    const payouts = app.get(PayoutsService);
+    expect(await payouts.payUser(worker.id)).toBe(false);
+
+    await prisma.user.update({ where: { id: worker.id }, data: { payoutHoldUntil: new Date(Date.now() - 1000) } });
+    expect(await payouts.payUser(worker.id)).toBe(true);
+    const payout = await prisma.payout.findFirstOrThrow({ where: { userId: worker.id, status: 'PENDING' } });
+    expect(payout).toMatchObject({ operator: 'MTN_MOMO', phone: '+2250577665544' });
+    await http().post(`/dev/payments/payout/${payout.id}/simulate`).send({ status: 'SUCCEEDED' }).expect(200);
+  });
+
+  it('answers admin routes only over the private network', async () => {
+    await http().get('/admin/disputes').set(auth(admin.token)).expect(200);
+    await http().get('/admin/disputes').set(auth(admin.token)).set('cf-connecting-ip', '203.0.113.9').expect(404);
+    await http().get('/admin/disputes').set(auth(worker.token)).expect(403);
+  });
+
+  it('deletes an account on request, erases personal data and frees the phone number', async () => {
+    const blocked = await http().delete('/me').set(auth(farmer.token)).expect(400);
+    expect(['ACTIVE_MISSIONS', 'MONEY_PENDING']).toContain(blocked.body.code);
+
+    const u = await login('07 99 88 77 66');
+    await http().patch('/me').set(auth(u.accessToken)).send({ name: 'Awa Koné', role: 'WORKER', locality: 'Daloa' }).expect(200);
+    await http().delete('/me').set(auth(u.accessToken)).expect(204);
+    await http().get('/me').set(auth(u.accessToken)).expect(401);
+    await http().post('/auth/refresh').send({ refreshToken: u.refreshToken }).expect(401);
+    await http().get(`/users/${u.user.id}`).set(auth(farmer.token)).expect(404);
+    const erased = await prisma.user.findUniqueOrThrow({ where: { id: u.user.id } });
+    expect(erased).toMatchObject({ name: null, locality: null, payoutPhone: null, phone: `deleted:${u.user.id}` });
+
+    const again = await login('07 99 88 77 66');
+    expect(again.isNewUser).toBe(true);
+    expect(again.user.id).not.toBe(u.user.id);
   });
 
   it('refuses unbalanced ledger entries at the database level', async () => {

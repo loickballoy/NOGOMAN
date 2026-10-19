@@ -51,9 +51,13 @@ export class AppConfig {
   readonly otpWindowSec: number;
   readonly allowedCountries: string[];
   readonly adminPhones: string[];
+  readonly adminOverInternet: boolean;
 
-  readonly smsProvider: 'console' | 'africastalking';
+  readonly smsProvider: 'console' | 'africastalking' | 'orange';
   readonly africasTalking: { username: string; apiKey: string; senderId?: string; sandbox: boolean };
+  readonly orange: { clientId: string; clientSecret: string; senderAddress: string; senderName?: string };
+  readonly smsDailyLimit: number;
+  readonly otpMaxPerDay: number;
 
   readonly paymentProvider: 'mock';
   readonly mockWebhookSecret: string;
@@ -64,6 +68,7 @@ export class AppConfig {
   readonly taskAutoReleaseHours: number;
   readonly checkInRadiusKm: number;
   readonly minPayoutXof: number;
+  readonly payoutHoldHours: number;
   readonly requireKycToTransact: boolean;
 
   readonly uploadDir: string;
@@ -89,15 +94,19 @@ export class AppConfig {
     this.refreshTokenTtlDays = int(env, 'REFRESH_TTL_DAYS', 30);
 
     this.otpSecret = str(env, 'OTP_SECRET');
+    if (this.otpSecret.length < 32) throw new Error('OTP_SECRET must be at least 32 characters');
     this.otpTtlSec = int(env, 'OTP_TTL_SEC', 5 * 60);
     this.otpMaxAttempts = int(env, 'OTP_MAX_ATTEMPTS', 5);
     this.otpMaxPerWindow = int(env, 'OTP_MAX_PER_WINDOW', 3);
     this.otpWindowSec = int(env, 'OTP_WINDOW_SEC', 15 * 60);
     this.allowedCountries = list(env, 'ALLOWED_COUNTRIES', ['CI']);
     this.adminPhones = list(env, 'ADMIN_PHONES', []);
+    this.adminOverInternet = bool(env, 'ADMIN_OVER_INTERNET', false);
 
     const sms = env.SMS_PROVIDER ?? 'console';
-    if (sms !== 'console' && sms !== 'africastalking') throw new Error('SMS_PROVIDER must be console or africastalking');
+    if (sms !== 'console' && sms !== 'africastalking' && sms !== 'orange') {
+      throw new Error('SMS_PROVIDER must be console, orange or africastalking');
+    }
     if (sms === 'console' && this.isProduction) throw new Error('SMS_PROVIDER=console is not allowed in production');
     this.smsProvider = sms;
     this.africasTalking = {
@@ -109,6 +118,18 @@ export class AppConfig {
     if (sms === 'africastalking' && (!this.africasTalking.username || !this.africasTalking.apiKey)) {
       throw new Error('AT_USERNAME and AT_API_KEY are required when SMS_PROVIDER=africastalking');
     }
+    this.orange = {
+      clientId: env.ORANGE_CLIENT_ID ?? '',
+      clientSecret: env.ORANGE_CLIENT_SECRET ?? '',
+      senderAddress: env.ORANGE_SENDER_ADDRESS || 'tel:+2250000',
+      senderName: env.ORANGE_SENDER_NAME || undefined,
+    };
+    if (sms === 'orange' && (!this.orange.clientId || !this.orange.clientSecret)) {
+      throw new Error('ORANGE_CLIENT_ID and ORANGE_CLIENT_SECRET are required when SMS_PROVIDER=orange');
+    }
+    // Circuit breaker against SMS pumping: past this many login codes in 24 h, logins pause.
+    this.smsDailyLimit = int(env, 'SMS_DAILY_LIMIT', 1000);
+    this.otpMaxPerDay = int(env, 'OTP_MAX_PER_DAY', 10);
 
     const payment = env.PAYMENT_PROVIDER ?? 'mock';
     if (payment !== 'mock') throw new Error('PAYMENT_PROVIDER must be mock (real providers arrive in the payments phase)');
@@ -124,6 +145,7 @@ export class AppConfig {
     this.taskAutoReleaseHours = int(env, 'TASK_AUTO_RELEASE_HOURS', 48);
     this.checkInRadiusKm = Number(env.CHECKIN_RADIUS_KM ?? 2);
     this.minPayoutXof = int(env, 'MIN_PAYOUT_XOF', 100);
+    this.payoutHoldHours = int(env, 'PAYOUT_HOLD_HOURS', 48);
     this.requireKycToTransact = bool(env, 'REQUIRE_KYC_TO_TRANSACT', false);
 
     this.uploadDir = env.UPLOAD_DIR ?? './uploads';

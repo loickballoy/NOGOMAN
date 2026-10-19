@@ -1,5 +1,8 @@
-import { BadRequestException, HttpException, HttpStatus, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException, HttpException, HttpStatus, Inject, Injectable, Logger, ServiceUnavailableException, UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { Cron } from '@nestjs/schedule';
 import { Role, User } from '@prisma/client';
 import { AppConfig } from '../config/app-config';
 import { hmacSha256, numericCode, randomToken, safeEqualHex } from '../common/crypto';
@@ -13,8 +16,12 @@ export interface TokenPair {
   expiresIn: number;
 }
 
+const DAY_MS = 24 * 3600 * 1000;
+
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
@@ -29,12 +36,32 @@ export class AuthService {
   async requestOtp(rawPhone: string) {
     const phone = normalizePhone(rawPhone, this.config.allowedCountries);
     const since = new Date(Date.now() - this.config.otpWindowSec * 1000);
-    const recent = await this.prisma.otpChallenge.count({ where: { phone, createdAt: { gte: since } } });
+    const dayAgo = new Date(Date.now() - DAY_MS);
+    const [recent, today, everyone] = await Promise.all([
+      this.prisma.otpChallenge.count({ where: { phone, createdAt: { gte: since } } }),
+      this.prisma.otpChallenge.count({ where: { phone, createdAt: { gte: dayAgo } } }),
+      this.prisma.otpChallenge.count({ where: { createdAt: { gte: dayAgo } } }),
+    ]);
     if (recent >= this.config.otpMaxPerWindow) {
       throw new HttpException(
         { code: 'OTP_RATE_LIMITED', message: 'Trop de codes demandés. Réessayez dans quelques minutes.' },
         HttpStatus.TOO_MANY_REQUESTS,
       );
+    }
+    // Caps guesses on one number (10 codes x 5 tries a day) and slow SIM-farm abuse.
+    if (today >= this.config.otpMaxPerDay) {
+      throw new HttpException(
+        { code: 'OTP_DAILY_LIMIT', message: 'Trop de codes demandés aujourd’hui. Réessayez demain.' },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    // SMS pumping (bots requesting codes for many numbers) costs money per SMS: stop sending.
+    if (everyone >= this.config.smsDailyLimit) {
+      this.logger.error(`SMS_DAILY_LIMIT reached (${everyone} codes in 24 h): login codes paused`);
+      throw new ServiceUnavailableException({
+        code: 'SMS_PAUSED',
+        message: 'Connexion momentanément indisponible. Réessayez plus tard.',
+      });
     }
 
     const code = numericCode(6);
@@ -105,6 +132,21 @@ export class AuthService {
     });
     if (rotated.count !== 1) throw new UnauthorizedException();
     return this.issueTokens(session.user);
+  }
+
+  /** Data retention: login codes are kept 7 days (for the rate limits), dead sessions 30 days. */
+  @Cron('17 3 * * *')
+  async purge(now = new Date()) {
+    if (!this.config.cronEnabled) return;
+    const [otp, sessions] = await Promise.all([
+      this.prisma.otpChallenge.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - 7 * DAY_MS) } } }),
+      this.prisma.session.deleteMany({
+        where: {
+          OR: [{ expiresAt: { lt: now } }, { revokedAt: { lt: new Date(now.getTime() - 30 * DAY_MS) } }],
+        },
+      }),
+    ]);
+    this.logger.log(`purged ${otp.count} login codes, ${sessions.count} sessions`);
   }
 
   async logout(refreshToken: string) {

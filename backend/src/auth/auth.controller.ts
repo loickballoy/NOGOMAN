@@ -6,20 +6,23 @@ import { presentSelf } from '../users/user.presenter';
 import { AuthService } from './auth.service';
 import { RefreshDto, RequestOtpDto, VerifyOtpDto } from './dto';
 
+/** Per-IP limits, read at request time so tests and busy shared IPs (cyber cafés) can tune them. */
+const perIpMinute = (key: string, fallback: number) => () => Number(process.env[key] || fallback);
+
 @ApiTags('auth')
 @Public()
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: perIpMinute('OTP_REQUESTS_PER_IP_MINUTE', 5), ttl: 60_000 } })
   @Post('otp/request')
   @HttpCode(200)
   requestOtp(@Body() dto: RequestOtpDto) {
     return this.auth.requestOtp(dto.phone);
   }
 
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Throttle({ default: { limit: perIpMinute('OTP_VERIFY_PER_IP_MINUTE', 10), ttl: 60_000 } })
   @Post('otp/verify')
   @HttpCode(200)
   async verifyOtp(@Body() dto: VerifyOtpDto) {

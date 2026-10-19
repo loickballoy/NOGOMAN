@@ -32,7 +32,11 @@ export function presentSelf(user: User) {
     kycLevel: user.kycLevel,
     kycStatus: user.kycStatus,
     payout: user.payoutOperator && user.payoutPhone
-      ? { operator: user.payoutOperator, phone: maskPhone(user.payoutPhone) }
+      ? {
+        operator: user.payoutOperator,
+        phone: maskPhone(user.payoutPhone),
+        heldUntil: user.payoutHoldUntil && user.payoutHoldUntil > new Date() ? user.payoutHoldUntil : null,
+      }
       : null,
     profileComplete: Boolean(user.name && user.role),
   };

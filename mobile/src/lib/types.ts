@@ -23,7 +23,8 @@ export interface SelfUser extends PublicUser {
   lng: number | null;
   kycLevel: number;
   kycStatus: string;
-  payout: { operator: Operator; phone: string } | null;
+  /** heldUntil: the number was changed recently, payouts wait until then. */
+  payout: { operator: Operator; phone: string; heldUntil: string | null } | null;
   profileComplete: boolean;
 }
 

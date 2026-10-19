@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { User } from '@prisma/client';
 import { CurrentUser } from '../common/decorators';
@@ -20,6 +20,12 @@ export class UsersController {
   @Patch('me')
   async update(@CurrentUser() user: User, @Body() dto: UpdateMeDto) {
     return presentSelf(await this.users.updateMe(user, dto));
+  }
+
+  @Delete('me')
+  @HttpCode(204)
+  async remove(@CurrentUser() user: User) {
+    await this.users.deleteMe(user);
   }
 
   @Get('users/:id')
