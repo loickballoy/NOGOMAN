@@ -64,7 +64,31 @@ async function refreshTokens(): Promise<boolean> {
   return refreshing;
 }
 
+/** Seconds until the access token expires, or null if it can't be read. */
+export function tokenSecondsLeft(token: string, now = Date.now()): number | null {
+  try {
+    const part = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(globalThis.atob(part.padEnd(part.length + ((4 - (part.length % 4)) % 4), '=')));
+    return typeof payload.exp === 'number' ? payload.exp - now / 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Refreshes an access token that is about to expire. Uploads need this: when the server
+ * rejects them early (expired token) it doesn't read the body, and iOS then reports a
+ * dropped connection instead of the 401, so the usual refresh-on-401 never runs.
+ */
+async function ensureFreshToken() {
+  const tokens = session?.getTokens();
+  if (!tokens) return;
+  const left = tokenSecondsLeft(tokens.accessToken);
+  if (left !== null && left < 60) await refreshTokens();
+}
+
 export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}, retried = false): Promise<T> {
+  if (!path.startsWith('/auth/')) await ensureFreshToken();
   const tokens = session?.getTokens();
   let res: Response;
   try {
@@ -103,14 +127,16 @@ export function accessToken(): string | undefined {
 
 /** Multipart upload (voice notes). `file.uri` is a local file on phones, a blob: URL on web. */
 export async function apiUpload<T>(path: string, fields: Record<string, string>, file: { uri: string; name: string; type: string }, retried = false): Promise<T> {
+  await ensureFreshToken();
   const form = new FormData();
   for (const [k, v] of Object.entries(fields)) form.append(k, v);
   if (Platform.OS === 'web') {
     const blob = await (await fetch(file.uri)).blob();
     form.append('audio', blob, file.name);
   } else {
-    // React Native's FormData takes a { uri, name, type } descriptor for local files.
-    form.append('audio', file as unknown as Blob);
+    // React Native's FormData takes a { uri, name, type } descriptor; the uri must be a file:// URL.
+    const uri = /^[a-z]+:\/\//i.test(file.uri) ? file.uri : `file://${file.uri}`;
+    form.append('audio', { ...file, uri } as unknown as Blob);
   }
   const tokens = session?.getTokens();
   let res: Response;
@@ -120,8 +146,13 @@ export async function apiUpload<T>(path: string, fields: Record<string, string>,
       headers: { Accept: 'application/json', ...(tokens ? { Authorization: `Bearer ${tokens.accessToken}` } : {}) },
       body: form,
     });
-  } catch {
-    throw new ApiError(0, 'NETWORK', 'Pas de connexion. Le message vocal n’est pas parti.');
+  } catch (err) {
+    // Shows up in the Metro terminal during development.
+    console.warn(`[upload] ${path} failed: ${String(err)} (file ${file.uri})`);
+    // A dropped upload is often an early rejection (see ensureFreshToken): refresh and retry once.
+    if (!retried && tokens && (await refreshTokens())) return apiUpload<T>(path, fields, file, true);
+    const detail = __DEV__ ? ` (${String(err)})` : '';
+    throw new ApiError(0, 'NETWORK', `Pas de connexion. Le message vocal n’est pas parti.${detail}`);
   }
   if (res.status === 401 && tokens && !retried && (await refreshTokens())) return apiUpload<T>(path, fields, file, true);
   const data = await res.json().catch(() => undefined);
