@@ -1,6 +1,6 @@
 # Nogoman mobile
 
-The Android and iOS app (plus a web build), made with Expo SDK 58 and Expo Router.
+The Android and iOS app (plus a web build), made with Expo SDK 57 and Expo Router.
 French only for now. Every screen has an **Écouter** button that reads it aloud with the
 phone's own French voice.
 
@@ -37,6 +37,14 @@ shows **Simuler la confirmation (test)**, which plays the payment provider.
 
 If you skip `EXPO_PUBLIC_API_URL`, the app assumes the API runs on the same computer as Expo,
 on port 3000.
+
+### "Project is incompatible with this version of Expo Go"
+
+Expo Go runs exactly one SDK version, and the App Store version can lag a few weeks behind a
+new SDK while Apple reviews it. The app is on **SDK 57** because that's what the store's Expo Go
+runs today (October 2026). When Expo Go moves to SDK 58, upgrade with
+`npx expo install expo@^58.0.0 --fix`, or skip Expo Go entirely with a development build:
+`npx eas-cli@latest build --profile development --platform ios`.
 
 ### The phone can't connect
 
