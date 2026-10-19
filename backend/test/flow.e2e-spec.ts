@@ -53,6 +53,12 @@ describe('Nogoman end-to-end flow', () => {
   let units: { id: string; workDate: string; status: string }[];
   const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
 
+  it('does not force HTTPS sub-requests, so the docs work over plain HTTP on a LAN IP', async () => {
+    const res = await http().get('/health').expect(200);
+    expect(res.headers['content-security-policy']).toBeDefined();
+    expect(res.headers['content-security-policy']).not.toContain('upgrade-insecure-requests');
+  });
+
   it('rejects a wrong OTP and signs users up by phone', async () => {
     await http().post('/auth/otp/request').send({ phone: '07 08 12 34 56' }).expect(200);
     const bad = await http().post('/auth/otp/verify').send({ phone: '0708123456', code: '000000' });
