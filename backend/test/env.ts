@@ -1,0 +1,10 @@
+process.env.NODE_ENV = 'test';
+process.env.DATABASE_URL = process.env.TEST_DATABASE_URL ?? 'postgresql://nogoman@127.0.0.1:5433/nogoman_test';
+process.env.JWT_SECRET = 'test-jwt-secret-that-is-long-enough-123456';
+process.env.OTP_SECRET = 'test-otp-secret';
+process.env.SMS_PROVIDER = 'console';
+process.env.ENABLE_DEV_ROUTES = 'true';
+process.env.ENABLE_DOCS = 'false';
+process.env.CRON_ENABLED = 'false';
+process.env.ADMIN_PHONES = '+2250101010101';
+process.env.OTP_MAX_PER_WINDOW = '50';

@@ -1,0 +1,66 @@
+# Nogoman backend for a single host (homelab pilot, then a cheap VPS).
+#   docker compose up -d                      # API + database + nightly backups
+#   docker compose --profile tunnel up -d     # ...and expose the API through Cloudflare Tunnel
+name: nogoman
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nogoman
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: nogoman
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nogoman -d nogoman"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://nogoman:${POSTGRES_PASSWORD}@db:5432/nogoman
+      PORT: 3000
+    depends_on:
+      db:
+        condition: service_healthy
+    # Reachable from the host (and your tailnet if API_BIND is the host's Tailscale IP).
+    # The public internet only reaches it through the tunnel.
+    ports:
+      - "${API_BIND:-127.0.0.1}:3000:3000"
+
+  backup:
+    image: prodrigestivill/postgres-backup-local:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_DB: nogoman
+      POSTGRES_USER: nogoman
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      SCHEDULE: "@daily"
+      BACKUP_KEEP_DAYS: 7
+      BACKUP_KEEP_WEEKS: 4
+      BACKUP_KEEP_MONTHS: 6
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.1
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env}
+    depends_on:
+      - api
+    profiles: ["tunnel"]
+
+volumes:
+  pgdata:

@@ -41,23 +41,8 @@ The goal is to simplify job matching and opportunities in the agricultural secto
 
 ### 1. Backend
 
-Clone the repo and install dependencies:
-
-```bash
-cd backend
-npm install
-```
-
-Set your environment variables (```.env```)
-
-```
-DATABASE_URL=postgres://...
-JWT_SECRET=your_secret_key
-```
-Run the server
-```
-node server.js
-```
+The API lives in [`backend/`](backend/README.md) (NestJS, PostgreSQL, Docker Compose, Cloudflare Tunnel).
+See its README for local setup, tests and homelab deployment.
 
 ### 2. Frontend
 
