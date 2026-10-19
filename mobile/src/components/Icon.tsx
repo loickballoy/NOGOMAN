@@ -36,6 +36,12 @@ const icons = {
   drop: <Path d="M12 2.7 6.3 9a7 7 0 1 0 11.4 0z" />,
   truck: <><Path d="M3 6h11v10H3zM14 9h4l3 3v4h-7" /><Circle cx="7" cy="18" r="2" /><Circle cx="17" cy="18" r="2" /></>,
   task: <><Rect x="3" y="3" width="18" height="18" rx="3" /><Path d="m8 12 3 3 5-6" /></>,
+  mic: <><Rect x="9" y="2" width="6" height="12" rx="3" /><Path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4" /></>,
+  send: <><Path d="m22 2-7 20-4-9-9-4z" /><Path d="M22 2 11 13" /></>,
+  play: <Path d="M7 4v16l13-8z" />,
+  pause: <><Path d="M8 5v14M16 5v14" /></>,
+  chat: <Path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />,
+  trash: <><Path d="M3 6h18" /><Path d="M8 6V4h8v2M6 6l1 15h10l1-15" /></>,
   more: <><Circle cx="5" cy="12" r="1.5" /><Circle cx="12" cy="12" r="1.5" /><Circle cx="19" cy="12" r="1.5" /></>,
 } as const;
 

@@ -33,6 +33,18 @@ day at funding time. Later fee changes never affect missions already paid for.
 one, so the aggregator (CinetPay / PayDunya / Flutterwave for Orange Money, MTN, Moov, Wave and
 cards) can be plugged in behind `PaymentProvider` without touching the escrow logic.
 
+## Messages
+
+A worker and a farmer get one thread per application, from the moment the worker applies.
+Text is passed through a contact filter before it's stored. The filter masks phone numbers
+(digits, "O" for zero, spelled out in French, +225), emails, links and other apps (WhatsApp,
+Telegram…), and counts attempts per user (`contactFlagCount`). Voice notes are stored as files
+in `UPLOAD_DIR` (the `uploads` Docker volume) and served only to the two participants. They
+can't be filtered. The app polls for new messages every few seconds.
+
+Note: the daily database backup doesn't include voice notes. Back up the `uploads` volume too
+(`docker run --rm -v nogoman_uploads:/data -v $PWD/backups:/out alpine tar czf /out/uploads.tgz -C /data .`).
+
 ## Farm locations
 
 The server names and checks every job location itself. When a farmer posts a job, the API
@@ -137,6 +149,7 @@ Full schema at `/docs`.
 | Escrow | `GET /jobs/:id/funding/quote`, `POST /jobs/:id/funding`, `GET /payments/:id`, `POST /webhooks/payments/:provider` |
 | Work | `GET /engagements/mine`, `GET /engagements/:id`, `POST /engagements/:id/cancel`, `POST /work-units/:id/{check-in,done,confirm,dispute}`, `POST /jobs/:id/confirm-day` |
 | Payouts | `GET /me/payouts` |
+| Messages | `GET /conversations`, `GET /conversations/unread`, `POST /applications/:id/conversation`, `GET/POST /conversations/:id/messages`, `POST /conversations/:id/voice`, `GET /messages/:id/audio`, `POST /conversations/:id/read` |
 | Reviews | `POST /engagements/:id/reviews` |
 | Admin | `GET /admin/disputes`, `POST /admin/work-units/:id/resolve`, `POST /admin/users/:id/kyc`, `GET /admin/ledger/trial-balance`, `POST /admin/payouts/run`, `POST /admin/work/auto-release` |
 
@@ -147,6 +160,7 @@ the app can show or read aloud.
 
 - [ ] Payment aggregator contract, then the real `PaymentProvider` (collections, payouts, webhook signature).
 - [ ] Smile ID verification, then set `REQUIRE_KYC_TO_TRANSACT=true`.
-- [ ] Chat with contact masking and in-app calls.
+- [x] Chat with contact masking and voice notes.
+- [ ] In-app calls (needs a development build).
 - [ ] Off-site backups and uptime monitoring.
 - [ ] Terms of use and privacy policy filed with ARTCI (Ivorian data protection authority).

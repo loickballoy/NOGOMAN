@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { router } from 'expo-router';
 import { api } from './api';
 import {
-  Engagement, FundingQuote, Job, JobApplication, MyApplication, Payment, PayoutHistory, SelfUser,
+  ChatMessage, Conversation, Engagement, FundingQuote, Job, JobApplication, MyApplication, Payment, PayoutHistory, SelfUser,
 } from './types';
 
 export const keys = {
@@ -15,7 +16,29 @@ export const keys = {
   quote: (jobId: string) => ['quote', jobId] as const,
   payment: (id: string) => ['payment', id] as const,
   payouts: ['payouts'] as const,
+  conversations: ['conversations'] as const,
+  unread: ['conversations', 'unread'] as const,
+  messages: (id: string) => ['messages', id] as const,
 };
+
+// Chat polls: simple and robust on patchy rural networks. A socket can replace it later.
+export const useConversations = () =>
+  useQuery({ queryKey: keys.conversations, queryFn: () => api<Conversation[]>('/conversations'), refetchInterval: 10_000 });
+export const useUnread = () =>
+  useQuery({ queryKey: keys.unread, queryFn: () => api<{ count: number }>('/conversations/unread'), refetchInterval: 15_000 });
+export const useMessages = (id: string) =>
+  useQuery({ queryKey: keys.messages(id), queryFn: () => api<ChatMessage[]>(`/conversations/${id}/messages`), refetchInterval: 4_000 });
+
+export const openConversation = (applicationId: string) =>
+  api<{ id: string }>(`/applications/${applicationId}/conversation`, { method: 'POST' });
+
+/** Opens (creating if needed) the chat for an application and navigates to it. */
+export function useOpenChat() {
+  return useMutation({
+    mutationFn: openConversation,
+    onSuccess: (c) => router.push(`/chat/${c.id}`),
+  });
+}
 
 /** Open jobs nearest first. `radiusKm` null = the whole country (people travel for farm work). */
 export const useJobsNear = (lat: number | undefined, lng: number | undefined, radiusKm: number | null, limit: number) =>

@@ -2,12 +2,12 @@ import { useLocalSearchParams } from 'expo-router';
 import { ReactElement, useState } from 'react';
 import { View } from 'react-native';
 import { Icon } from '@/components/Icon';
-import { Avatar, Banner, Button, Card, Chip, Header, Loading, Pill, Screen, T } from '@/components/ui';
+import { Avatar, Banner, Button, Card, Chip, Header, IconButton, Loading, Pill, Screen, T } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useMe } from '@/lib/auth';
 import { fcfa, initials, relativeDay, shortDate, todayIso } from '@/lib/format';
 import { precisePlace } from '@/lib/location';
-import { useApiMutation, useEngagement } from '@/lib/queries';
+import { useApiMutation, useEngagement, useOpenChat } from '@/lib/queries';
 import { colors, radius, space } from '@/lib/theme';
 import { Engagement, UnitStatus, WorkUnit } from '@/lib/types';
 
@@ -46,6 +46,11 @@ function DayBars({ units }: { units: WorkUnit[] }) {
       ))}
     </View>
   );
+}
+
+function ChatButton({ e }: { e: Engagement }) {
+  const chat = useOpenChat();
+  return <IconButton icon="chat" label="Messages" onPress={() => chat.mutate(e.applicationId)} />;
 }
 
 function WorkerMission({ e }: { e: Engagement }) {
@@ -87,7 +92,7 @@ function WorkerMission({ e }: { e: Engagement }) {
 
   return (
     <Screen footer={action}>
-      <Header listen={listen} />
+      <Header listen={listen} right={<ChatButton e={e} />} />
       <View style={{ gap: 4 }}>
         <T variant="label" color={colors.greenText}>{e.status === 'ACTIVE' ? 'Mission en cours' : e.status === 'COMPLETED' ? 'Mission terminée' : 'Mission'}</T>
         <T variant="title">{e.job.title}</T>
@@ -141,7 +146,7 @@ function FarmerMission({ e }: { e: Engagement }) {
 
   return (
     <Screen footer={footer}>
-      <Header listen={listen} />
+      <Header listen={listen} right={<ChatButton e={e} />} />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
         <Avatar name={initials(e.worker.name)} size={52} />
         <View style={{ flex: 1 }}>

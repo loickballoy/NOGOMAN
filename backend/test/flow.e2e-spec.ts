@@ -154,6 +154,41 @@ describe('Nogoman end-to-end flow', () => {
     expect(job.body.address).toBe(daloa.label);
   });
 
+  it('lets the worker and the farmer talk, with contact details masked', async () => {
+    const appId = (await http().get('/applications/mine').set(auth(worker.token)).expect(200)).body[0].id;
+    const conv = await http().post(`/applications/${appId}/conversation`).set(auth(worker.token)).expect(201);
+    const again = await http().post(`/applications/${appId}/conversation`).set(auth(farmer.token)).expect(201);
+    expect(again.body.id).toBe(conv.body.id); // one thread per application
+
+    const sent = await http().post(`/conversations/${conv.body.id}/messages`).set(auth(worker.token))
+      .send({ text: 'Bonjour, appelle-moi au 05 44 33 22 11 ou sur WhatsApp' }).expect(201);
+    expect(sent.body).toMatchObject({ kind: 'TEXT', mine: true, masked: true });
+    expect(sent.body.text).not.toMatch(/44 33|whatsapp/i);
+
+    const list = await http().get('/conversations').set(auth(farmer.token)).expect(200);
+    expect(list.body[0]).toMatchObject({ id: conv.body.id, unread: 1, other: { name: 'Moussa Koné' } });
+    expect((await http().get('/conversations/unread').set(auth(farmer.token))).body.count).toBe(1);
+
+    const voice = await http().post(`/conversations/${conv.body.id}/voice`).set(auth(farmer.token))
+      .field('durationMs', '4200').attach('audio', Buffer.from('fake-audio-bytes'), { filename: 'note.m4a', contentType: 'audio/mp4' })
+      .expect(201);
+    expect(voice.body).toMatchObject({ kind: 'VOICE', audioMs: 4200 });
+    const audio = await http().get(voice.body.audioUrl).set(auth(worker.token)).expect(200);
+    expect(audio.headers['content-type']).toContain('audio/mp4');
+    expect(audio.headers['cross-origin-resource-policy']).toBe('cross-origin');
+    await http().post(`/conversations/${conv.body.id}/voice`).set(auth(farmer.token))
+      .field('durationMs', '4200').attach('audio', Buffer.from('<script>'), { filename: 'x.html', contentType: 'text/html' }).expect(400);
+
+    const thread = await http().get(`/conversations/${conv.body.id}/messages`).set(auth(farmer.token)).expect(200);
+    expect(thread.body.map((m: { kind: string; mine: boolean }) => [m.kind, m.mine])).toEqual([['TEXT', false], ['VOICE', true]]);
+    await http().post(`/conversations/${conv.body.id}/read`).set(auth(farmer.token)).expect(204);
+    expect((await http().get('/conversations/unread').set(auth(farmer.token))).body.count).toBe(0);
+
+    // Nobody else can read the thread or the voice note.
+    await http().get(`/conversations/${conv.body.id}/messages`).set(auth(admin.token)).expect(403);
+    await http().get(voice.body.audioUrl).set(auth(admin.token)).expect(403);
+  });
+
   it('collects the escrow and only activates the work on a verified webhook', async () => {
     const quote = await http().get(`/jobs/${jobId}/funding/quote`).set(auth(farmer.token)).expect(200);
     expect(quote.body).toMatchObject({ workers: 1, subtotalXof: 13500, feeXof: 270, totalXof: 13770 });

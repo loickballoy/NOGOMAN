@@ -66,6 +66,9 @@ export class AppConfig {
   readonly minPayoutXof: number;
   readonly requireKycToTransact: boolean;
 
+  readonly uploadDir: string;
+  readonly maxVoiceSeconds: number;
+
   readonly geocoder: 'nominatim' | 'none';
   readonly nominatimUrl: string;
   readonly geocoderUserAgent: string;
@@ -122,6 +125,9 @@ export class AppConfig {
     this.checkInRadiusKm = Number(env.CHECKIN_RADIUS_KM ?? 2);
     this.minPayoutXof = int(env, 'MIN_PAYOUT_XOF', 100);
     this.requireKycToTransact = bool(env, 'REQUIRE_KYC_TO_TRANSACT', false);
+
+    this.uploadDir = env.UPLOAD_DIR ?? './uploads';
+    this.maxVoiceSeconds = int(env, 'MAX_VOICE_SECONDS', 120);
 
     const geocoder = env.GEOCODER ?? 'nominatim';
     if (geocoder !== 'nominatim' && geocoder !== 'none') throw new Error('GEOCODER must be nominatim or none');

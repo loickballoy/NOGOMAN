@@ -96,6 +96,39 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   return data as T;
 }
 
+/** Current access token, for media the app loads directly (voice notes). */
+export function accessToken(): string | undefined {
+  return session?.getTokens()?.accessToken;
+}
+
+/** Multipart upload (voice notes). `file.uri` is a local file on phones, a blob: URL on web. */
+export async function apiUpload<T>(path: string, fields: Record<string, string>, file: { uri: string; name: string; type: string }, retried = false): Promise<T> {
+  const form = new FormData();
+  for (const [k, v] of Object.entries(fields)) form.append(k, v);
+  if (Platform.OS === 'web') {
+    const blob = await (await fetch(file.uri)).blob();
+    form.append('audio', blob, file.name);
+  } else {
+    // React Native's FormData takes a { uri, name, type } descriptor for local files.
+    form.append('audio', file as unknown as Blob);
+  }
+  const tokens = session?.getTokens();
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', ...(tokens ? { Authorization: `Bearer ${tokens.accessToken}` } : {}) },
+      body: form,
+    });
+  } catch {
+    throw new ApiError(0, 'NETWORK', 'Pas de connexion. Le message vocal n’est pas parti.');
+  }
+  if (res.status === 401 && tokens && !retried && (await refreshTokens())) return apiUpload<T>(path, fields, file, true);
+  const data = await res.json().catch(() => undefined);
+  if (!res.ok) throw new ApiError(res.status, data?.code, typeof data?.message === 'string' ? data.message : 'Envoi impossible.');
+  return data as T;
+}
+
 export function errorMessage(err: unknown): string {
   return err instanceof ApiError ? err.message : 'Une erreur est survenue. Réessayez.';
 }

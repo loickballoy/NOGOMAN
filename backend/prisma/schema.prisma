@@ -97,6 +97,11 @@ enum LedgerAccountType {
   PLATFORM_REVENUE
 }
 
+enum MessageKind {
+  TEXT
+  VOICE
+}
+
 enum JournalKind {
   FUNDING
   RELEASE
@@ -124,15 +129,18 @@ model User {
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
-  sessions        Session[]
-  jobs            Job[]
-  applications    Application[]
-  engagements     Engagement[]
-  payments        Payment[]
-  payouts         Payout[]
-  reviewsWritten  Review[]        @relation("ReviewAuthor")
-  reviewsReceived Review[]        @relation("ReviewSubject")
-  ledgerAccounts  LedgerAccount[]
+  sessions         Session[]
+  jobs             Job[]
+  applications     Application[]
+  engagements      Engagement[]
+  payments         Payment[]
+  payouts          Payout[]
+  reviewsWritten   Review[]        @relation("ReviewAuthor")
+  reviewsReceived  Review[]        @relation("ReviewSubject")
+  ledgerAccounts   LedgerAccount[]
+  messages         Message[]
+  /// Times this user tried to share a phone number, email or link in chat.
+  contactFlagCount Int             @default(0)
 }
 
 model OtpChallenge {
@@ -200,9 +208,10 @@ model Application {
   createdAt DateTime          @default(now())
   updatedAt DateTime          @updatedAt
 
-  job        Job         @relation(fields: [jobId], references: [id])
-  worker     User        @relation(fields: [workerId], references: [id])
-  engagement Engagement?
+  job          Job           @relation(fields: [jobId], references: [id])
+  worker       User          @relation(fields: [workerId], references: [id])
+  engagement   Engagement?
+  conversation Conversation?
 
   @@unique([jobId, workerId])
 }
@@ -360,4 +369,41 @@ model WebhookEvent {
   createdAt DateTime @default(now())
 
   @@unique([provider, eventId])
+}
+
+/// One thread per application: the worker and the farmer can talk from the moment
+/// the worker applies. Phone numbers are masked; voice notes are kept on the server.
+model Conversation {
+  id            String    @id @default(cuid())
+  applicationId String    @unique
+  jobId         String
+  farmerId      String
+  workerId      String
+  lastMessageAt DateTime?
+  farmerReadAt  DateTime?
+  workerReadAt  DateTime?
+  createdAt     DateTime  @default(now())
+
+  application Application @relation(fields: [applicationId], references: [id])
+  messages    Message[]
+
+  @@index([farmerId, lastMessageAt])
+  @@index([workerId, lastMessageAt])
+}
+
+model Message {
+  id             String      @id @default(cuid())
+  conversationId String
+  senderId       String
+  kind           MessageKind
+  text           String? // already masked
+  audioPath      String? // file name under UPLOAD_DIR
+  audioMs        Int?
+  flags          String[] // what the contact filter removed: PHONE, EMAIL, LINK, APP
+  createdAt      DateTime    @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  sender       User         @relation(fields: [senderId], references: [id])
+
+  @@index([conversationId, createdAt])
 }

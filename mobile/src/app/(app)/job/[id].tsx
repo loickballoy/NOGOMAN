@@ -6,7 +6,7 @@ import { api, errorMessage } from '@/lib/api';
 import { useMe } from '@/lib/auth';
 import { category } from '@/lib/catalog';
 import { capitalize, fcfa, initials, km, relativeDay, shortDate } from '@/lib/format';
-import { useApiMutation, useApplications, useEngagements, useJob, useMyApplications } from '@/lib/queries';
+import { useApiMutation, useApplications, useEngagements, useJob, useMyApplications, useOpenChat } from '@/lib/queries';
 import { colors, radius, space } from '@/lib/theme';
 import { Job } from '@/lib/types';
 
@@ -75,14 +75,19 @@ function WorkerView({ job }: { job: Job }) {
   const mine = useMyApplications();
   const application = mine.data?.find((a) => a.job.id === job.id);
   const apply = useApiMutation(() => api(`/jobs/${job.id}/applications`, { method: 'POST', body: {} }));
+  const chat = useOpenChat();
   const perDay = job.payMode === 'DAILY';
   const listen = `${job.title}, à ${job.locality}. Vous gagnez ${fcfa(job.workerNetXof)} francs ${perDay ? 'par jour' : 'pour la tâche'}`
     + `${perDay ? `, soit ${fcfa(job.workerTotalNetXof)} francs pour ${job.durationDays} jours` : ''}. Début ${relativeDay(job.startDate)}. `
     + `Il reste ${job.slotsLeft} place${job.slotsLeft > 1 ? 's' : ''}. Le paiement est garanti par Nogoman. Pour postuler, touchez le bouton en bas.`;
 
   const footer = application ? (
-    <Button variant="secondary" label={application.engagement ? 'Voir ma mission' : 'Candidature envoyée'} icon={application.engagement ? 'arrow' : 'check'}
-      disabled={!application.engagement} onPress={() => application.engagement && router.push(`/mission/${application.engagement.id}`)} />
+    <View style={{ flexDirection: 'row', gap: 8 }}>
+      <Button variant="secondary" label="Écrire" icon="chat" style={{ flex: 1 }} loading={chat.isPending} onPress={() => chat.mutate(application.id)} />
+      <Button variant={application.engagement ? 'primary' : 'secondary'} label={application.engagement ? 'Ma mission' : 'Envoyée'}
+        icon={application.engagement ? 'arrow' : 'check'} style={{ flex: 1 }}
+        disabled={!application.engagement} onPress={() => application.engagement && router.push(`/mission/${application.engagement.id}`)} />
+    </View>
   ) : (
     <Button label="Postuler" loading={apply.isPending} disabled={job.slotsLeft === 0} onPress={() => apply.mutate()} />
   );
@@ -138,6 +143,7 @@ function FarmerView({ job }: { job: Job }) {
   const hire = useApiMutation((appId: string) => api(`/applications/${appId}/hire`, { method: 'POST' }));
   const reject = useApiMutation((appId: string) => api(`/applications/${appId}/reject`, { method: 'POST' }));
   const cancel = useApiMutation(() => api(`/jobs/${job.id}/cancel`, { method: 'POST' }));
+  const chat = useOpenChat();
 
   const forJob = (engagements.data ?? []).filter((e) => e.job.id === job.id);
   const awaiting = forJob.filter((e) => e.status === 'AWAITING_FUNDING');
@@ -198,6 +204,10 @@ function FarmerView({ job }: { job: Job }) {
               </View>
               <Pill label={APP_STATUS[a.status].label} tone={APP_STATUS[a.status].tone} />
             </View>
+            {(a.status === 'PENDING' || a.status === 'HIRED') && (
+              <Button variant="ghost" icon="chat" label={`Écrire à ${a.worker.name?.split(' ')[0] ?? 'ce travailleur'}`}
+                loading={chat.isPending && chat.variables === a.id} onPress={() => chat.mutate(a.id)} />
+            )}
             {a.status === 'PENDING' && !ended && (
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <Button variant="secondary" label="Refuser" style={{ flex: 1, minHeight: 48 }} loading={reject.isPending && reject.variables === a.id} onPress={() => reject.mutate(a.id)} />

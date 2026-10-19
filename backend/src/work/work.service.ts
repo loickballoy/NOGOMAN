@@ -52,6 +52,7 @@ export class WorkService {
     const isWorker = viewer.id === e.workerId;
     return {
       id: e.id,
+      applicationId: e.applicationId,
       status: e.status,
       payMode: e.payMode,
       rateXof: e.rateXof,

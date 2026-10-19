@@ -87,6 +87,7 @@ export interface WorkUnit {
 
 export interface Engagement {
   id: string;
+  applicationId: string;
   status: EngagementStatus;
   payMode: PayMode;
   rateXof: number;
@@ -130,6 +131,28 @@ export interface Place {
   countryCode: string | null;
   lat: number;
   lng: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  kind: 'TEXT' | 'VOICE';
+  mine: boolean;
+  text: string | null;
+  audioMs: number | null;
+  audioUrl: string | null;
+  /** The server removed a phone number, email or link from this message. */
+  masked: boolean;
+  createdAt: string;
+}
+
+export interface Conversation {
+  id: string;
+  applicationId: string;
+  job: { id: string; title: string; locality: string };
+  applicationStatus: 'PENDING' | 'HIRED' | 'REJECTED' | 'WITHDRAWN';
+  other: { id: string; name: string | null; verified: boolean };
+  lastMessage: ChatMessage | null;
+  unread: number;
 }
 
 export interface Tokens {

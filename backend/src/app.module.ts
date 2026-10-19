@@ -14,6 +14,7 @@ import { HealthController } from './health/health.controller';
 import { HiringModule } from './hiring/hiring.module';
 import { JobsModule } from './jobs/jobs.module';
 import { LedgerModule } from './ledger/ledger.module';
+import { MessagesModule } from './messages/messages.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ReviewsModule } from './reviews/reviews.controller';
@@ -41,6 +42,7 @@ import { WorkModule } from './work/work.module';
     PaymentsModule,
     WorkModule,
     ReviewsModule,
+    MessagesModule,
     AdminModule,
   ],
   controllers: [HealthController],

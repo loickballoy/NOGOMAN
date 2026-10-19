@@ -12,7 +12,8 @@
       "bundleIdentifier": "ci.nogoman.app",
       "supportsTablet": false,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Nogoman utilise votre position pour montrer le travail près de vous et enregistrer votre arrivée à la plantation."
+        "NSLocationWhenInUseUsageDescription": "Nogoman utilise votre position pour montrer le travail près de vous et enregistrer votre arrivée à la plantation.",
+        "NSMicrophoneUsageDescription": "Nogoman utilise le micro pour envoyer des messages vocaux."
       }
     },
     "android": {
@@ -49,7 +50,13 @@
           "locationWhenInUsePermission": "Nogoman utilise votre position pour montrer le travail près de vous et enregistrer votre arrivée à la plantation."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Nogoman utilise le micro pour envoyer des messages vocaux."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false,

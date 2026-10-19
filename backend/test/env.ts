@@ -9,3 +9,4 @@ process.env.CRON_ENABLED = 'false';
 process.env.ADMIN_PHONES = '+2250101010101';
 process.env.OTP_MAX_PER_WINDOW = '50';
 process.env.GEOCODER = 'none';
+process.env.UPLOAD_DIR = require('path').join(require('os').tmpdir(), 'nogoman-test-uploads');
