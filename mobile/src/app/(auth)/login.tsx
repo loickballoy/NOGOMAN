@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 import { Keypad } from '@/components/Keypad';
 import { Banner, Button, Header, Screen, T } from '@/components/ui';
-import { api, errorMessage } from '@/lib/api';
+import { API_URL, api, errorMessage } from '@/lib/api';
 import { groupPhone } from '@/lib/format';
 import { colors, radius } from '@/lib/theme';
 
@@ -48,6 +48,7 @@ export default function LoginScreen() {
       {error && <Banner tone="alert">{error}</Banner>}
       <View style={{ flex: 1 }} />
       <Keypad value={digits} onChange={(v) => { setDigits(v); setError(null); }} maxLength={10} />
+      {__DEV__ && <T variant="tiny" color={colors.muted} style={{ textAlign: 'center' }}>API : {API_URL}</T>}
     </Screen>
   );
 }

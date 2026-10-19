@@ -26,8 +26,8 @@ typing.
    ```bash
    cd mobile
    cp .env.example .env          # set EXPO_PUBLIC_API_URL=http://<tailscale-ip>:3000
-   npm install
-   npx expo start
+   npm ci
+   REACT_NATIVE_PACKAGER_HOSTNAME=$(tailscale ip -4) npx expo start -c
    ```
 4. Scan the QR code with the camera (iPhone) or with Expo Go (Android).
 
@@ -37,6 +37,29 @@ shows **Simuler la confirmation (test)**, which plays the payment provider.
 
 If you skip `EXPO_PUBLIC_API_URL`, the app assumes the API runs on the same computer as Expo,
 on port 3000.
+
+### The phone can't connect
+
+Check each link in order:
+
+1. **Phone → API.** In the phone's browser, open `http://<server-tailscale-ip>:3000/health`.
+   It must show `{"status":"ok"}`. If not, Tailscale isn't on for the phone, or the server isn't
+   publishing port 3000 on that interface: `docker compose ps` should show `0.0.0.0:3000->3000/tcp`.
+2. **Phone → Expo (Metro, port 8081).** If Expo Go can't open the app at all, the QR code
+   probably points at your computer's Wi-Fi address. Make it use the Tailscale address:
+   ```bash
+   REACT_NATIVE_PACKAGER_HOSTNAME=$(tailscale ip -4) npx expo start -c
+   ```
+3. **App → API.** `EXPO_PUBLIC_API_URL` is read when the bundle is built. After changing `.env`,
+   restart with `npx expo start -c`. The login screen shows the address the app uses
+   ("API : …") at the bottom.
+
+### Dependencies
+
+Install with `npm ci` so you get exactly the versions in `package-lock.json`, and add packages
+with `npx expo install`. Don't run `npm audit fix --force`: it "fixes" warnings in Expo's
+development tools by installing an Expo version from 2021. Those warnings concern the
+build tooling on your computer, not code shipped in the app.
 
 ## Web build
 

@@ -78,7 +78,9 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
       body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
     });
   } catch {
-    throw new ApiError(0, 'NETWORK', 'Pas de connexion. Vérifiez internet et réessayez.');
+    // In development, say which address failed: it is almost always the wrong IP or port.
+    const where = __DEV__ ? ` (API injoignable : ${API_URL})` : '';
+    throw new ApiError(0, 'NETWORK', `Pas de connexion. Vérifiez internet et réessayez.${where}`);
   }
 
   if (res.status === 401 && tokens && !retried && !path.startsWith('/auth/')) {
