@@ -44,17 +44,12 @@ The goal is to simplify job matching and opportunities in the agricultural secto
 The API lives in [`backend/`](backend/README.md) (NestJS, PostgreSQL, Docker Compose, Cloudflare Tunnel).
 See its README for local setup, tests and homelab deployment.
 
-### 2. Frontend
+### 2. Mobile app (Android, iOS, web)
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
-For the React Native mobile app (still to be implemented):
-```
-npx expo start -c --tunnel
-```
+The app lives in [`mobile/`](mobile/README.md) (Expo SDK 58). See its README to run it on your
+phone with Expo Go against the homelab backend.
+
+The original Next.js demo is still at the repository root for reference.
 
 ---
 

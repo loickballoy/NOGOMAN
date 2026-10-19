@@ -1,0 +1,68 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api } from './api';
+import {
+  Engagement, FundingQuote, Job, JobApplication, MyApplication, Payment, PayoutHistory, SelfUser,
+} from './types';
+
+export const keys = {
+  jobsNear: (lat: number, lng: number) => ['jobs', 'near', lat.toFixed(3), lng.toFixed(3)] as const,
+  myJobs: ['jobs', 'mine'] as const,
+  job: (id: string) => ['job', id] as const,
+  applications: (jobId: string) => ['applications', jobId] as const,
+  myApplications: ['applications', 'mine'] as const,
+  engagements: ['engagements'] as const,
+  engagement: (id: string) => ['engagement', id] as const,
+  quote: (jobId: string) => ['quote', jobId] as const,
+  payment: (id: string) => ['payment', id] as const,
+  payouts: ['payouts'] as const,
+};
+
+export const useJobsNear = (lat?: number, lng?: number) =>
+  useQuery({
+    queryKey: keys.jobsNear(lat ?? 0, lng ?? 0),
+    queryFn: () => api<Job[]>(`/jobs?lat=${lat}&lng=${lng}&radiusKm=40`),
+    enabled: lat !== undefined && lng !== undefined,
+  });
+
+export const useMyJobs = () => useQuery({ queryKey: keys.myJobs, queryFn: () => api<Job[]>('/jobs/mine') });
+export const useJob = (id: string) => useQuery({ queryKey: keys.job(id), queryFn: () => api<Job>(`/jobs/${id}`) });
+export const useApplications = (jobId: string, enabled: boolean) =>
+  useQuery({ queryKey: keys.applications(jobId), queryFn: () => api<JobApplication[]>(`/jobs/${jobId}/applications`), enabled });
+export const useMyApplications = (enabled = true) =>
+  useQuery({ queryKey: keys.myApplications, queryFn: () => api<MyApplication[]>('/applications/mine'), enabled });
+export const useEngagements = () => useQuery({ queryKey: keys.engagements, queryFn: () => api<Engagement[]>('/engagements/mine') });
+export const useEngagement = (id: string) =>
+  useQuery({ queryKey: keys.engagement(id), queryFn: () => api<Engagement>(`/engagements/${id}`) });
+export const useQuote = (jobId: string) =>
+  useQuery({ queryKey: keys.quote(jobId), queryFn: () => api<FundingQuote>(`/jobs/${jobId}/funding/quote`) });
+export const usePayouts = () => useQuery({ queryKey: keys.payouts, queryFn: () => api<PayoutHistory>('/me/payouts') });
+
+/** Polls a pending payment until the provider settles it. */
+export const usePayment = (id?: string) =>
+  useQuery({
+    queryKey: keys.payment(id ?? ''),
+    queryFn: () => api<Payment>(`/payments/${id}`),
+    enabled: !!id,
+    refetchInterval: (q) => (q.state.data?.status === 'PENDING' ? 3000 : false),
+  });
+
+/** Any write: runs it, then refreshes everything job- and money-related. */
+export function useApiMutation<TVars = void, TRes = unknown>(fn: (vars: TVars) => Promise<TRes>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      for (const k of ['jobs', 'job', 'applications', 'engagements', 'engagement', 'quote', 'payouts']) {
+        qc.invalidateQueries({ queryKey: [k] });
+      }
+    },
+  });
+}
+
+export const useUpdateMe = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<Record<string, unknown>>) => api<SelfUser>('/me', { method: 'PATCH', body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.payouts }),
+  });
+};
