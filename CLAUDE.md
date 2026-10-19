@@ -58,9 +58,11 @@ Elles s'appliquent à toutes les tâches. Si une issue semble les contredire, s'
   avancent en parallèle : ne pas toucher au périmètre d'une autre sous-issue ouverte.
 - **Tests d'abord, en deux temps dans la même PR :**
   1. un commit « tests (rouges) » écrit **à partir de l'issue et de la spécification**, pas du code. Les
-     tests passent par l'API HTTP et les noms de variables d'env de la spécification, et compilent sur
-     le code existant. Pousser, indiquer dans la PR quels tests échouent et pourquoi, puis **attendre la
-     validation du mainteneur** ;
+     tests passent par l'API HTTP et les noms de variables d'env de la spécification. Ils compilent sur
+     le code existant, **sauf** quand ils visent un module que l'issue demande de créer (pas d'API HTTP
+     pour l'atteindre) : un échec de compilation sur ce seul import est alors un rouge accepté, à
+     signaler dans la PR. Pousser, indiquer dans la PR quels tests échouent et pourquoi, puis
+     **attendre la validation du mainteneur** ;
   2. l'implémentation, **sans modifier les tests validés**. Si un test validé se révèle faux, le corriger
      dans un commit séparé et le justifier dans la PR.
 - Contrat d'API : codes HTTP et `code` d'erreur tels qu'écrits dans l'issue ou l'épique. Un nouveau code
