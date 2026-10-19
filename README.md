@@ -3,6 +3,9 @@
 Nogoman is a **web and mobile platform** designed to connect **agricultural workers** with **farm owners** in rural areas.  
 The goal is to simplify job matching and opportunities in the agricultural sector — a model similar to "Uber", but adapted for farming communities.
 
+**Contributing:** the MVP plan and its permanent rules are in [`docs/PLAN.md`](docs/PLAN.md); the
+working rules for contributors and coding agents are in [`CLAUDE.md`](CLAUDE.md).
+
 ---
 
 ## 🚀 Features
