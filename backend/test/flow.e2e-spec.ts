@@ -112,7 +112,7 @@ describe('Nogoman end-to-end flow', () => {
 
     const found = await http().get('/jobs').query({ ...NEAR, radiusKm: 10 }).set(auth(worker.token)).expect(200);
     expect(found.body).toHaveLength(1);
-    expect(found.body[0]).toMatchObject({ id: jobId, workerNetXof: 4410, workerTotalNetXof: 13230, slotsLeft: 1 });
+    expect(found.body[0]).toMatchObject({ id: jobId, workerNetXof: 4365, workerTotalNetXof: 13095, slotsLeft: 1 });
     expect(found.body[0].lat).toBe(6.88); // rounded for non-hired viewers
     expect(found.body[0].farmer.phone).toBeUndefined();
     expect(found.body[0].address).toBeNull(); // full address only once hired
@@ -205,15 +205,15 @@ describe('Nogoman end-to-end flow', () => {
 
   it('collects the escrow and only activates the work on a verified webhook', async () => {
     const quote = await http().get(`/jobs/${jobId}/funding/quote`).set(auth(farmer.token)).expect(200);
-    expect(quote.body).toMatchObject({ workers: 1, subtotalXof: 13500, feeXof: 270, totalXof: 13770 });
+    expect(quote.body).toMatchObject({ workers: 1, subtotalXof: 13500, feeXof: 675, totalXof: 14175 });
 
     const pay = await http().post(`/jobs/${jobId}/funding`).set(auth(farmer.token))
       .send({ operator: 'ORANGE_MONEY', phone: '0708123456' }).expect(201);
-    expect(pay.body).toMatchObject({ status: 'PENDING', amountXof: 13770 });
+    expect(pay.body).toMatchObject({ status: 'PENDING', amountXof: 14175 });
     const again = await http().post(`/jobs/${jobId}/funding`).set(auth(farmer.token)).send({}).expect(201);
     expect(again.body.id).toBe(pay.body.id); // no double charge
 
-    const body = JSON.stringify({ eventId: 'evt_1', kind: 'collection', providerRef: pay.body.providerRef, status: 'SUCCEEDED', amountXof: 13770 });
+    const body = JSON.stringify({ eventId: 'evt_1', kind: 'collection', providerRef: pay.body.providerRef, status: 'SUCCEEDED', amountXof: 14175 });
     await http().post('/webhooks/payments/mock').set('Content-Type', 'application/json')
       .set('x-mock-signature', 'f'.repeat(64)).send(body).expect(401);
 
@@ -232,12 +232,12 @@ describe('Nogoman end-to-end flow', () => {
       .set('x-mock-signature', signature).send(body).expect(200);
     expect(dup.body.duplicate).toBe(true);
 
-    expect(await ledger.balance(Accounts.escrow(jobId).code)).toBe(13770);
+    expect(await ledger.balance(Accounts.escrow(jobId).code)).toBe(14175);
     const e = await http().get(`/engagements/${engagementId}`).set(auth(worker.token)).expect(200);
     expect(e.body.status).toBe('ACTIVE');
     units = e.body.units;
     expect(units.map((u) => u.workDate)).toEqual([0, 1, 2].map((i) => isoDate(addDays(todayLocal(), i))));
-    expect(e.body.totals).toEqual({ earnedXof: 0, upcomingXof: 13230 });
+    expect(e.body.totals).toEqual({ earnedXof: 0, upcomingXof: 13095 });
   });
 
   it('checks the worker in by GPS and pays the day the farmer confirms', async () => {
@@ -251,9 +251,9 @@ describe('Nogoman end-to-end flow', () => {
       .send({ date: units[0].workDate }).expect(201);
     expect(day.body).toEqual({ date: units[0].workDate, workers: 1, releasedXof: 4500 });
 
-    expect(await ledger.balance(Accounts.payable(worker.id).code)).toBe(4410);
-    expect(await ledger.balance(Accounts.escrow(jobId).code)).toBe(2 * 4590);
-    expect(await ledger.balance(Accounts.revenue().code)).toBe(180);
+    expect(await ledger.balance(Accounts.payable(worker.id).code)).toBe(4365);
+    expect(await ledger.balance(Accounts.escrow(jobId).code)).toBe(2 * 4725);
+    expect(await ledger.balance(Accounts.revenue().code)).toBe(360);
   });
 
   it('pays the worker out in one transfer and returns failed transfers to the balance', async () => {
@@ -261,11 +261,11 @@ describe('Nogoman end-to-end flow', () => {
     expect(await payouts.runBatch()).toBe(1);
     expect(await payouts.runBatch()).toBe(0); // one in flight per user
     const payout = await prisma.payout.findFirstOrThrow({ where: { userId: worker.id } });
-    expect(payout).toMatchObject({ amountXof: 4410, operator: 'ORANGE_MONEY', phone: '+2250544332211' });
+    expect(payout).toMatchObject({ amountXof: 4365, operator: 'ORANGE_MONEY', phone: '+2250544332211' });
     expect(await ledger.balance(Accounts.payable(worker.id).code)).toBe(0);
 
     await http().post(`/dev/payments/payout/${payout.id}/simulate`).send({ status: 'FAILED', reason: 'number_blocked' }).expect(200);
-    expect(await ledger.balance(Accounts.payable(worker.id).code)).toBe(4410);
+    expect(await ledger.balance(Accounts.payable(worker.id).code)).toBe(4365);
 
     // After the cooldown the money goes out again.
     await prisma.payout.update({ where: { id: payout.id }, data: { updatedAt: new Date(Date.now() - 7 * 3600_000) } });
@@ -284,7 +284,7 @@ describe('Nogoman end-to-end flow', () => {
     // Two days later every remaining unit is past its auto-release time.
     const result = await app.get(WorkService).autoRelease(addDays(new Date(), 3));
     expect(result).toEqual({ released: 0, missed: 1 }); // day 3: no check-in -> refunded
-    expect(await ledger.balance(Accounts.payable(farmer.id).code)).toBe(4590);
+    expect(await ledger.balance(Accounts.payable(farmer.id).code)).toBe(4725);
 
     await http().get('/admin/disputes').set(auth(farmer.token)).expect(403);
     const disputes = await http().get('/admin/disputes').set(auth(admin.token)).expect(200);
@@ -298,7 +298,7 @@ describe('Nogoman end-to-end flow', () => {
     expect(job.body.status).toBe('COMPLETED');
 
     expect(await ledger.balance(Accounts.escrow(jobId).code)).toBe(0);
-    expect(await ledger.balance(Accounts.revenue().code)).toBe(360);
+    expect(await ledger.balance(Accounts.revenue().code)).toBe(720);
     const trial = await http().get('/admin/ledger/trial-balance').set(auth(admin.token)).expect(200);
     expect(trial.body.total).toBe(0);
   });
@@ -319,7 +319,7 @@ describe('Nogoman end-to-end flow', () => {
     const application = await http().post(`/jobs/${job.body.id}/applications`).set(auth(worker.token)).send({}).expect(201);
     const hired = await http().post(`/applications/${application.body.id}/hire`).set(auth(farmer.token)).expect(201);
     const pay = await http().post(`/jobs/${job.body.id}/funding`).set(auth(farmer.token)).send({}).expect(201);
-    expect(pay.body.amountXof).toBe(25500);
+    expect(pay.body.amountXof).toBe(26250);
     await http().post(`/dev/payments/collection/${pay.body.id}/simulate`).send({ status: 'SUCCEEDED' }).expect(200);
 
     const e = await http().get(`/engagements/${hired.body.id}`).set(auth(worker.token)).expect(200);
@@ -349,7 +349,7 @@ describe('Nogoman end-to-end flow', () => {
     const cancelled = await http().post(`/engagements/${hired.body.id}/cancel`).set(auth(worker.token)).expect(201);
     expect(cancelled.body.status).toBe('CANCELLED');
     expect(cancelled.body.units.every((u: { status: string }) => u.status === 'CANCELLED')).toBe(true);
-    expect(await ledger.balance(Accounts.payable(farmer.id).code) - before).toBe(5 * 4080);
+    expect(await ledger.balance(Accounts.payable(farmer.id).code) - before).toBe(5 * 4200);
     expect(await ledger.balance(Accounts.escrow(job.body.id).code)).toBe(0);
     const reopened = await http().get(`/jobs/${job.body.id}`).set(auth(farmer.token)).expect(200);
     expect(reopened.body.status).toBe('OPEN');
