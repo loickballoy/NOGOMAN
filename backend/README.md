@@ -103,6 +103,9 @@ npm run test:e2e                   # full flow against a real database whose nam
 TEST_DATABASE_URL=postgresql://user@host:5432/nogoman_test npm run test:e2e
 ```
 
+New e2e files start the API with `bootApp(env)` and reuse the login, hiring and payment steps of
+`test/helpers.ts` (see "Helpers e2e" in the root `CLAUDE.md`).
+
 ## Run on the homelab without a domain
 
 ```bash

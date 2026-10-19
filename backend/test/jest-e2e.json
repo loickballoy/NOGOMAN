@@ -6,5 +6,6 @@
   "testEnvironment": "node",
   "setupFiles": ["<rootDir>/env.ts"],
   "globalSetup": "<rootDir>/global-setup.ts",
+  "testSequencer": "<rootDir>/sequencer.js",
   "testTimeout": 60000
 }
