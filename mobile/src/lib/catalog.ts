@@ -46,13 +46,3 @@ export const TOWNS = [
   { name: 'Abidjan', lat: 5.3484, lng: -4.0083 },
 ];
 
-/** "Près de Daloa": how a farm found by GPS is described to workers. */
-export function nearestTownLabel(lat: number, lng: number): string {
-  let best = TOWNS[0];
-  let bestD = Infinity;
-  for (const t of TOWNS) {
-    const d = (t.lat - lat) ** 2 + ((t.lng - lng) * Math.cos((lat * Math.PI) / 180)) ** 2;
-    if (d < bestD) { bestD = d; best = t; }
-  }
-  return `Près de ${best.name}`;
-}

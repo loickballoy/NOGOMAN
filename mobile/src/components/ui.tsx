@@ -1,17 +1,20 @@
 import { ReactNode, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextStyle, View, ViewStyle } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextStyle, View, ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useIsFocused } from 'expo-router';
 import { stopSpeaking, toggleSpeak } from '@/lib/speech';
 import { colors, radius, space, touch, type } from '@/lib/theme';
 import { Icon, IconName } from './Icon';
 
+export const MAX_FONT_SCALE = 1.3;
+
 export function T({ style, children, numberOfLines, variant = 'body', color }: {
   style?: TextStyle | TextStyle[]; children: ReactNode; numberOfLines?: number;
   variant?: keyof typeof type; color?: string;
 }) {
   return (
-    <Text numberOfLines={numberOfLines} style={[type[variant] as TextStyle, { color: color ?? colors.ink }, style as TextStyle]}>
+    // Large system text sizes are honoured, up to the point where layouts would break.
+    <Text numberOfLines={numberOfLines} maxFontSizeMultiplier={MAX_FONT_SCALE} style={[type[variant] as TextStyle, { color: color ?? colors.ink }, style as TextStyle]}>
       {children}
     </Text>
   );
@@ -72,10 +75,13 @@ export function Screen({ children, footer, scroll = true, background = colors.wh
   const body = padded ? <View style={styles.body}>{children}</View> : children;
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: background }} edges={['top', 'left', 'right', 'bottom']}>
-      {scroll ? (
-        <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">{body}</ScrollView>
-      ) : <View style={{ flex: 1 }}>{body}</View>}
-      {footer && <View style={styles.footer}>{footer}</View>}
+      {/* Keeps the main button above the keyboard. Both platforms draw edge-to-edge, so both need padding. */}
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+        {scroll ? (
+          <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">{body}</ScrollView>
+        ) : <View style={{ flex: 1 }}>{body}</View>}
+        {footer && <View style={styles.footer}>{footer}</View>}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -156,7 +162,7 @@ export function Banner({ tone = 'info', title, children, icon }: { tone?: keyof 
   return (
     <View style={[styles.banner, { backgroundColor: t.bg }]} accessibilityRole={tone === 'alert' ? 'alert' : undefined}>
       <Icon name={icon ?? t.icon} color={t.fg} size={22} />
-      <Text style={[type.small as TextStyle, { color: t.fg, flex: 1 }]}>
+      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={[type.small as TextStyle, { color: t.fg, flex: 1 }]}>
         {title && <Text style={{ fontWeight: '800' }}>{title} </Text>}
         {children}
       </Text>

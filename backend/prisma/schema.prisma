@@ -106,23 +106,23 @@ enum JournalKind {
 }
 
 model User {
-  id            String               @id @default(cuid())
-  phone         String               @unique // E.164, never exposed to other users
-  name          String?
-  role          Role?
-  bio           String?
-  locality      String?
-  lat           Float?
-  lng           Float?
-  kycLevel      Int                  @default(0) // 0 phone, 1 ID + selfie, 2 business
-  kycStatus     KycStatus            @default(NOT_STARTED)
+  id             String               @id @default(cuid())
+  phone          String               @unique // E.164, never exposed to other users
+  name           String?
+  role           Role?
+  bio            String?
+  locality       String?
+  lat            Float?
+  lng            Float?
+  kycLevel       Int                  @default(0) // 0 phone, 1 ID + selfie, 2 business
+  kycStatus      KycStatus            @default(NOT_STARTED)
   payoutOperator MobileMoneyOperator?
-  payoutPhone   String?
-  ratingSum     Int                  @default(0)
-  ratingCount   Int                  @default(0)
-  disabledAt    DateTime?
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
+  payoutPhone    String?
+  ratingSum      Int                  @default(0)
+  ratingCount    Int                  @default(0)
+  disabledAt     DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
   sessions        Session[]
   jobs            Job[]
@@ -130,8 +130,8 @@ model User {
   engagements     Engagement[]
   payments        Payment[]
   payouts         Payout[]
-  reviewsWritten  Review[]           @relation("ReviewAuthor")
-  reviewsReceived Review[]           @relation("ReviewSubject")
+  reviewsWritten  Review[]        @relation("ReviewAuthor")
+  reviewsReceived Review[]        @relation("ReviewSubject")
   ledgerAccounts  LedgerAccount[]
 }
 
@@ -161,28 +161,30 @@ model Session {
 }
 
 model Job {
-  id            String      @id @default(cuid())
-  farmerId      String
-  title         String
-  description   String      @default("")
-  category      JobCategory
-  crop          String?
-  payMode       PayMode
-  rateXof       Int // per day (DAILY) or per worker for the whole task (TASK)
-  workersNeeded Int
-  durationDays  Int // number of paid days (DAILY) or estimated length (TASK)
-  startDate     DateTime    @db.Date
-  locality      String
-  lat           Float
-  lng           Float
-  status        JobStatus   @default(OPEN)
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id               String      @id @default(cuid())
+  farmerId         String
+  title            String
+  description      String      @default("")
+  category         JobCategory
+  crop             String?
+  payMode          PayMode
+  rateXof          Int // per day (DAILY) or per worker for the whole task (TASK)
+  workersNeeded    Int
+  durationDays     Int // number of paid days (DAILY) or estimated length (TASK)
+  startDate        DateTime    @db.Date
+  locality         String // short place name shown to everyone ("Étampes", "Daloa")
+  address          String? // full geocoded address, shown only to the farmer and hired workers
+  locationVerified Boolean     @default(false) // the server matched lat/lng to a real place
+  lat              Float
+  lng              Float
+  status           JobStatus   @default(OPEN)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 
-  farmer       User          @relation(fields: [farmerId], references: [id])
-  applications Application[]
-  engagements  Engagement[]
-  payments     Payment[]
+  farmer         User            @relation(fields: [farmerId], references: [id])
+  applications   Application[]
+  engagements    Engagement[]
+  payments       Payment[]
   ledgerAccounts LedgerAccount[]
 
   @@index([status, lat, lng])
@@ -258,20 +260,20 @@ model WorkUnit {
 }
 
 model Payment {
-  id          String              @id @default(cuid())
-  payerId     String
-  jobId       String
-  provider    String
-  providerRef String?             @unique
-  operator    MobileMoneyOperator?
-  phone       String?
-  amountXof   Int
-  feeXof      Int
-  status      PaymentStatus       @default(PENDING)
-  checkoutUrl String?
+  id            String               @id @default(cuid())
+  payerId       String
+  jobId         String
+  provider      String
+  providerRef   String?              @unique
+  operator      MobileMoneyOperator?
+  phone         String?
+  amountXof     Int
+  feeXof        Int
+  status        PaymentStatus        @default(PENDING)
+  checkoutUrl   String?
   failureReason String?
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
 
   payer       User         @relation(fields: [payerId], references: [id])
   job         Job          @relation(fields: [jobId], references: [id])
@@ -351,11 +353,11 @@ model Review {
 }
 
 model WebhookEvent {
-  id          String   @id @default(cuid())
-  provider    String
-  eventId     String
-  payload     Json
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  provider  String
+  eventId   String
+  payload   Json
+  createdAt DateTime @default(now())
 
   @@unique([provider, eventId])
 }

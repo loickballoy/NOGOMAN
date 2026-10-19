@@ -66,6 +66,11 @@ export class AppConfig {
   readonly minPayoutXof: number;
   readonly requireKycToTransact: boolean;
 
+  readonly geocoder: 'nominatim' | 'none';
+  readonly nominatimUrl: string;
+  readonly geocoderUserAgent: string;
+  readonly geocodeCountries: string[];
+
   constructor(env: Env = process.env) {
     this.nodeEnv = env.NODE_ENV ?? 'development';
     this.isProduction = this.nodeEnv === 'production';
@@ -117,5 +122,13 @@ export class AppConfig {
     this.checkInRadiusKm = Number(env.CHECKIN_RADIUS_KM ?? 2);
     this.minPayoutXof = int(env, 'MIN_PAYOUT_XOF', 100);
     this.requireKycToTransact = bool(env, 'REQUIRE_KYC_TO_TRANSACT', false);
+
+    const geocoder = env.GEOCODER ?? 'nominatim';
+    if (geocoder !== 'nominatim' && geocoder !== 'none') throw new Error('GEOCODER must be nominatim or none');
+    this.geocoder = geocoder;
+    this.nominatimUrl = (env.NOMINATIM_URL ?? 'https://nominatim.openstreetmap.org').replace(/\/$/, '');
+    // Nominatim's policy asks for an identifying User-Agent with a way to reach you.
+    this.geocoderUserAgent = `Nogoman/0.1 (${env.GEOCODER_CONTACT || 'contact not set'})`;
+    this.geocodeCountries = list(env, 'GEOCODE_COUNTRIES', []).map((c) => c.toLowerCase());
   }
 }

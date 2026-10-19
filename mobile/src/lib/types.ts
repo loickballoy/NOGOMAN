@@ -42,6 +42,10 @@ export interface Job {
   durationDays: number;
   startDate: string;
   locality: string;
+  /** Full address: only for the farmer and hired workers. */
+  address: string | null;
+  /** The server matched the coordinates to a real place. */
+  locationVerified: boolean;
   lat: number;
   lng: number;
   distanceKm?: number;
@@ -116,6 +120,16 @@ export interface Payment {
 export interface PayoutHistory {
   balanceXof: number;
   payouts: { id: string; amountXof: number; operator: Operator; status: 'PENDING' | 'SUCCEEDED' | 'FAILED'; createdAt: string }[];
+}
+
+/** A geocoded place from the backend (OpenStreetMap). */
+export interface Place {
+  label: string;
+  locality: string;
+  region: string | null;
+  countryCode: string | null;
+  lat: number;
+  lng: number;
 }
 
 export interface Tokens {

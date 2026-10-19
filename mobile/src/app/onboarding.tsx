@@ -70,6 +70,9 @@ export default function Onboarding() {
           autoFocus
           autoCapitalize="words"
           maxLength={60}
+          maxFontSizeMultiplier={1.3}
+          returnKeyType="done"
+          onSubmitEditing={() => ok && (last ? save() : setStep(3))}
           accessibilityLabel="Prénom et nom"
           style={[type.h3, { height: 64, borderWidth: 2, borderColor: colors.ink, borderRadius: radius.lg, paddingHorizontal: 16, color: colors.ink }]}
         />

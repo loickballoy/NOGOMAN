@@ -10,6 +10,7 @@ import { PayoutsService } from '../src/payouts/payouts.service';
 import { MockPaymentProvider } from '../src/payments/providers/mock-payment.provider';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { WorkService } from '../src/work/work.service';
+import { GEOCODER, Geocoder, Place } from '../src/geo/geocoder';
 
 // Daloa, and a point ~300 m away / ~10 km away.
 const FARM = { lat: 6.8774, lng: -6.4502 };
@@ -31,8 +32,17 @@ describe('Nogoman end-to-end flow', () => {
     return res.body as { accessToken: string; refreshToken: string; isNewUser: boolean; user: { id: string } };
   }
 
+  // Stands in for Nominatim: names every position Daloa, like the real geocoder would.
+  const daloa: Place = { label: 'Gonaté, Daloa, Haut-Sassandra, Côte d’Ivoire', locality: 'Daloa', region: 'Haut-Sassandra', countryCode: 'ci', lat: FARM.lat, lng: FARM.lng };
+  const fakeGeocoder: Geocoder = {
+    search: async (q) => (q.toLowerCase().includes('daloa') ? [daloa] : []),
+    reverse: async (lat, lng) => ({ ...daloa, lat, lng }),
+  };
+
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(GEOCODER).useValue(fakeGeocoder)
+      .compile();
     app = moduleRef.createNestApplication({ rawBody: true });
     configureApp(app);
     await app.init();
@@ -94,18 +104,29 @@ describe('Nogoman end-to-end flow', () => {
     const res = await http().post('/jobs').set(auth(farmer.token)).send({
       title: 'Récolte de cacao', category: 'HARVEST', crop: 'Cacao', payMode: 'DAILY',
       rateXof: 4500, workersNeeded: 1, durationDays: 3, startDate: isoDate(todayLocal()),
-      locality: 'Daloa', ...FARM,
+      locality: 'Ma plantation', ...FARM,
     }).expect(201);
     jobId = res.body.id;
+    // The server names the place from the coordinates, ignoring the phone's label.
+    expect(res.body).toMatchObject({ locality: 'Daloa', locationVerified: true, address: daloa.label });
 
     const found = await http().get('/jobs').query({ ...NEAR, radiusKm: 10 }).set(auth(worker.token)).expect(200);
     expect(found.body).toHaveLength(1);
     expect(found.body[0]).toMatchObject({ id: jobId, workerNetXof: 4410, workerTotalNetXof: 13230, slotsLeft: 1 });
     expect(found.body[0].lat).toBe(6.88); // rounded for non-hired viewers
     expect(found.body[0].farmer.phone).toBeUndefined();
+    expect(found.body[0].address).toBeNull(); // full address only once hired
 
     const elsewhere = await http().get('/jobs').query({ lat: 5.35, lng: -4.0, radiusKm: 20 }).set(auth(worker.token)).expect(200);
     expect(elsewhere.body).toHaveLength(0);
+  });
+
+  it('searches and names places for the farm location step', async () => {
+    const found = await http().get('/geo/search').query({ q: 'Daloa' }).set(auth(farmer.token)).expect(200);
+    expect(found.body[0].locality).toBe('Daloa');
+    const named = await http().get('/geo/reverse').query(FARM).set(auth(farmer.token)).expect(200);
+    expect(named.body.locality).toBe('Daloa');
+    await http().get('/geo/search').query({ q: 'Daloa' }).expect(401);
   });
 
   it('requires a payout number before applying, then hires', async () => {
@@ -124,6 +145,7 @@ describe('Nogoman end-to-end flow', () => {
     const job = await http().get(`/jobs/${jobId}`).set(auth(worker.token)).expect(200);
     expect(job.body.status).toBe('FILLED');
     expect(job.body.lat).toBe(FARM.lat); // exact once hired
+    expect(job.body.address).toBe(daloa.label);
   });
 
   it('collects the escrow and only activates the work on a verified webhook', async () => {

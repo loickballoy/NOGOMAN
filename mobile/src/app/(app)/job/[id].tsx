@@ -33,10 +33,26 @@ function Facts({ job }: { job: Job }) {
           <Icon name={f.icon} />
           <View style={{ flex: 1 }}>
             <T variant="bodyStrong" numberOfLines={2}>{f.value}</T>
-            <T variant="tiny" color={colors.muted} numberOfLines={1}>{f.label}</T>
+            <T variant="tiny" color={colors.muted} numberOfLines={2}>{f.label}</T>
           </View>
         </View>
       ))}
+    </View>
+  );
+}
+
+/** Village for everyone; the full address only for the farmer and hired workers. */
+function Location({ job }: { job: Job }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center', padding: 14, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line }}>
+      <Icon name="pin" color={job.locationVerified ? colors.green : colors.ink} />
+      <View style={{ flex: 1, gap: 2 }}>
+        <T variant="bodyStrong">{job.locality}</T>
+        <T variant="tiny" color={colors.muted} numberOfLines={3}>
+          {job.address ?? 'L’adresse exacte est donnée une fois embauché.'}
+        </T>
+      </View>
+      {job.locationVerified && <Pill label="Lieu vérifié" tone="success" />}
     </View>
   );
 }
@@ -98,6 +114,7 @@ function WorkerView({ job }: { job: Job }) {
         </T>
       </View>
       <Facts job={job} />
+      <Location job={job} />
       <Banner tone="success" title="Paiement garanti.">
         Le planteur paie Nogoman avant votre premier jour. {perDay ? 'Vous êtes payé chaque soir' : 'Vous êtes payé à la fin de la tâche'} sur votre mobile money.
       </Banner>
@@ -147,6 +164,7 @@ function FarmerView({ job }: { job: Job }) {
         <Pill label={STATUS_LABEL[job.status]} tone={job.status === 'OPEN' ? 'pending' : job.status === 'IN_PROGRESS' ? 'success' : 'neutral'} />
       </Card>
       <Facts job={job} />
+      <Location job={job} />
 
       {active.length > 0 && (
         <View style={{ gap: space.sm }}>

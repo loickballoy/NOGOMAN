@@ -35,8 +35,9 @@ export class CreateJobDto {
   @ApiProperty({ example: '2026-11-02' }) @IsDateString({ strict: true })
   startDate: string;
 
-  @ApiProperty({ example: 'Daloa' }) @IsString() @Length(2, 80)
-  locality: string;
+  @ApiPropertyOptional({ description: 'Fallback name if the server cannot geocode the position', example: 'Daloa' })
+  @IsOptional() @IsString() @Length(2, 80)
+  locality?: string;
 
   @ApiProperty() @IsLatitude()
   lat: number;

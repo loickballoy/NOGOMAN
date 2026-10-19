@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard, RolesGuard } from './common/guards';
 import { AppConfig } from './config/app-config';
 import { CoreModule } from './config/core.module';
+import { GeoModule } from './geo/geo.module';
 import { HealthController } from './health/health.controller';
 import { HiringModule } from './hiring/hiring.module';
 import { JobsModule } from './jobs/jobs.module';
@@ -32,6 +33,7 @@ import { WorkModule } from './work/work.module';
     ScheduleModule.forRoot(),
     PrismaModule,
     LedgerModule,
+    GeoModule,
     AuthModule,
     UsersModule,
     JobsModule,

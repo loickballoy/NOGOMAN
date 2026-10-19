@@ -33,10 +33,23 @@ day at funding time. Later fee changes never affect missions already paid for.
 one, so the aggregator (CinetPay / PayDunya / Flutterwave for Orange Money, MTN, Moov, Wave and
 cards) can be plugged in behind `PaymentProvider` without touching the escrow logic.
 
+## Farm locations
+
+The server names and checks every job location itself. When a farmer posts a job, the API
+looks up the coordinates in OpenStreetMap (Nominatim) and stores the place name (village or
+town) and full address, with `locationVerified: true`. Whatever label the phone sends is only a
+fallback for when the geocoder is unreachable. The app's address search goes through
+`GET /geo/search` and `GET /geo/reverse`.
+
+Set `GEOCODER_CONTACT` to your email (Nominatim's usage policy asks for one), and optionally
+`GEOCODE_COUNTRIES=ci` to limit address search to Côte d'Ivoire. Requests are throttled to one
+per second and cached for a day. For heavier traffic, self-host Nominatim and set
+`NOMINATIM_URL`.
+
 ## Privacy
 
 - Phone numbers are never returned for another user.
-- Farm coordinates are rounded to about 1 km until a worker is hired.
+- Farm coordinates are rounded to about 1 km, and the full address is hidden, until a worker is hired.
 - OTP codes and refresh tokens are stored hashed.
 - Refresh tokens rotate on every use. Reusing an old token logs out every session of that user.
 

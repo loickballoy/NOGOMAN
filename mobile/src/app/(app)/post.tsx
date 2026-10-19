@@ -1,17 +1,20 @@
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, View } from 'react-native';
+import { Calendar } from '@/components/Calendar';
 import { Icon } from '@/components/Icon';
+import { PlacePicker } from '@/components/PlacePicker';
 import { Banner, Button, Chip, Header, Progress, Screen, Stepper, T } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
-import { CATEGORIES, CROPS, jobTitle, nearestTownLabel, TOWNS } from '@/lib/catalog';
+import { CATEGORIES, CROPS, jobTitle } from '@/lib/catalog';
 import { addDaysIso, fcfa, relativeDay, shortDate, todayIso } from '@/lib/format';
-import { currentPlace } from '@/lib/location';
 import { useApiMutation } from '@/lib/queries';
 import { colors, radius, space } from '@/lib/theme';
-import { Job, JobCategory, PayMode } from '@/lib/types';
+import { Job, JobCategory, PayMode, Place } from '@/lib/types';
 
-const TOTAL = 4;
+const TOTAL = 5;
+// How far ahead a job can be posted.
+const MAX_DAYS_AHEAD = 180;
 // Mirrors the backend default (2 %) so the farmer sees the real total before paying.
 const FEE = 0.02;
 
@@ -24,12 +27,10 @@ export default function PostJob() {
   const [taskRate, setTaskRate] = useState(25000);
   const [people, setPeople] = useState(3);
   const [days, setDays] = useState(7);
-  const [startOffset, setStartOffset] = useState(1);
-  const [place, setPlace] = useState<{ lat: number; lng: number; locality: string; fromGps: boolean } | null>(null);
-
-  useEffect(() => {
-    currentPlace().then((p) => setPlace({ lat: p.lat, lng: p.lng, fromGps: p.fromGps, locality: p.fromGps ? nearestTownLabel(p.lat, p.lng) : TOWNS[0].name }));
-  }, []);
+  const today = todayIso();
+  const [start, setStart] = useState(addDaysIso(today, 1));
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [place, setPlace] = useState<Place | null>(null);
 
   const create = useApiMutation((body: Record<string, unknown>) => api<Job>('/jobs', { method: 'POST', body }));
 
@@ -43,7 +44,7 @@ export default function PostJob() {
       rateXof: mode === 'DAILY' ? rate : taskRate,
       workersNeeded: people,
       durationDays: days,
-      startDate: addDaysIso(todayIso(), startOffset),
+      startDate: start,
       locality: place.locality,
       lat: place.lat,
       lng: place.lng,
@@ -117,34 +118,51 @@ export default function PostJob() {
     );
   }
 
-  const start = addDaysIso(todayIso(), startOffset);
+  if (step === 4) {
+    const quick = [0, 1, 2, 7].map((d) => addDaysIso(today, d));
+    const isQuick = quick.includes(start);
+    const quickLabel = (d: number) => (d === 0 ? "Aujourd'hui" : d === 1 ? 'Demain' : d === 7 ? 'Dans 1 semaine' : `Dans ${d} jours`);
+    return (
+      <Screen footer={<Button label="Continuer" onPress={() => setStep(5)} />}>
+        <StepHeader step={4} back={back}
+          listen={`Quand commence le travail ? Choisissez aujourd'hui, demain, ou une autre date dans le calendrier. Début choisi : ${relativeDay(start)}, ${shortDate(start)}.`} />
+        <T variant="title">Quand commence le travail ?</T>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {[0, 1, 2, 7].map((d, i) => (
+            <Chip key={d} label={quickLabel(d)} selected={start === quick[i] && !calendarOpen} onPress={() => { setStart(quick[i]); setCalendarOpen(false); }} />
+          ))}
+          <Chip icon="calendar" label={!isQuick ? shortDate(start) : 'Autre date'} selected={calendarOpen || !isQuick} onPress={() => setCalendarOpen(true)} />
+        </View>
+        {calendarOpen && (
+          <Calendar value={start} min={today} max={addDaysIso(today, MAX_DAYS_AHEAD)}
+            onChange={(d) => setStart(d)} />
+        )}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.field, borderRadius: radius.lg, padding: space.lg }}>
+          <Icon name="calendar" />
+          <T variant="bodyStrong">Début : {shortDate(start)} ({relativeDay(start)})</T>
+        </View>
+      </Screen>
+    );
+  }
+
   return (
     <Screen footer={<Button label="Publier l'offre" loading={create.isPending} disabled={!place} onPress={publish} />}>
-      <StepHeader step={4} back={back}
-        listen={`Quand et où ? Début ${relativeDay(start)}. Lieu : ${place?.locality ?? ''}. Vérifiez le résumé, puis touchez Publier l'offre.`} />
-      <T variant="title">Quand et où ?</T>
-      <T variant="label" color={colors.muted}>Début</T>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {[0, 1, 2, 3, 7].map((d) => (
-          <Chip key={d} label={d === 0 ? "Aujourd'hui" : d === 1 ? 'Demain' : d === 7 ? 'Dans 1 semaine' : `Dans ${d} jours`}
-            selected={startOffset === d} onPress={() => setStartOffset(d)} />
-        ))}
-      </View>
-      <T variant="label" color={colors.muted}>Lieu de la plantation</T>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        <Chip icon="locate" label="Ma position" selected={!!place?.fromGps}
-          onPress={() => currentPlace().then((p) => p.fromGps && setPlace({ ...p, locality: nearestTownLabel(p.lat, p.lng) }))} />
-        {TOWNS.map((t) => <Chip key={t.name} label={t.name} selected={!place?.fromGps && place?.locality === t.name}
-          onPress={() => setPlace({ lat: t.lat, lng: t.lng, locality: t.name, fromGps: false })} />)}
-      </View>
-      <View style={{ backgroundColor: colors.field, borderRadius: radius.lg, padding: space.lg, gap: 6 }}>
-        <T variant="bodyStrong">{cat ? jobTitle(cat, crop) : ''}</T>
-        <T variant="small" color={colors.ink2}>
-          {people} personne{people > 1 ? 's' : ''} · {mode === 'DAILY' ? `${days} jours à ${fcfa(rate)} FCFA` : `${fcfa(taskRate)} FCFA par personne`} · {shortDate(start)}
-        </T>
-        <T variant="h3">{fcfa(total)} FCFA au total</T>
-        <T variant="tiny" color={colors.muted}>Vous payez seulement quand vous embauchez quelqu’un.</T>
-      </View>
+      <StepHeader step={5} back={back}
+        listen={place
+          ? `La plantation est à ${place.locality}. Vérifiez le repère sur la carte, puis touchez Publier l'offre. Total : ${fcfa(total)} francs.`
+          : "Où est la plantation ? Si vous y êtes, touchez Je suis à la plantation. Sinon, écrivez le nom du village ou de la ville."} />
+      <T variant="title">Où est la plantation ?</T>
+      <PlacePicker value={place} onChange={setPlace} />
+      {place && (
+        <View style={{ backgroundColor: colors.field, borderRadius: radius.lg, padding: space.lg, gap: 6 }}>
+          <T variant="bodyStrong">{cat ? jobTitle(cat, crop) : ''} · {place.locality}</T>
+          <T variant="small" color={colors.ink2}>
+            {people} personne{people > 1 ? 's' : ''} · {mode === 'DAILY' ? `${days} jours à ${fcfa(rate)} FCFA` : `${fcfa(taskRate)} FCFA par personne`} · début {shortDate(start)}
+          </T>
+          <T variant="h3">{fcfa(total)} FCFA au total</T>
+          <T variant="tiny" color={colors.muted}>Vous payez seulement quand vous embauchez quelqu’un. Les travailleurs voient le village ; l’adresse exacte seulement une fois embauchés.</T>
+        </View>
+      )}
       {create.error && <Banner tone="alert">{errorMessage(create.error)}</Banner>}
     </Screen>
   );

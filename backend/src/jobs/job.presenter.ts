@@ -34,6 +34,8 @@ export function presentJob(
     durationDays: job.durationDays,
     startDate: isoDate(job.startDate),
     locality: job.locality,
+    address: opts.exactLocation ? job.address : null,
+    locationVerified: job.locationVerified,
     lat: opts.exactLocation ? job.lat : round(job.lat),
     lng: opts.exactLocation ? job.lng : round(job.lng),
     distanceKm: opts.distanceKm === undefined ? undefined : Math.round(opts.distanceKm * 10) / 10,
