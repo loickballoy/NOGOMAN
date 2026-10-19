@@ -168,8 +168,60 @@ Full schema at `/docs`.
 | Reviews | `POST /engagements/:id/reviews` |
 | Admin | `GET /admin/disputes`, `POST /admin/work-units/:id/resolve`, `POST /admin/users/:id/kyc`, `GET /admin/ledger/trial-balance`, `POST /admin/payouts/run`, `POST /admin/work/auto-release` |
 
-Errors carry a stable `code` (e.g. `PAYOUT_METHOD_REQUIRED`, `TOO_FAR`) and a French `message`
-the app can show or read aloud.
+## Errors
+
+Every error has the same body, built by the global filter in `src/common/http-exception.filter.ts`:
+
+```json
+{ "statusCode": 400, "code": "TOO_FAR", "message": "Vous êtes à 9.9 km de la plantation. Rapprochez-vous pour pointer." }
+```
+
+`code` is stable and in English (`^[A-Z_]+$`): the app branches on it. `message` is plain French,
+written to be shown or read aloud. Some errors add fields (`details`, `status`). A 500 never reveals
+what went wrong: the details only go to the server log.
+
+Generic codes, used when an error has no business code:
+
+| Code | HTTP | When |
+|---|---|---|
+| `VALIDATION_FAILED` | 400 | A field is missing or malformed. `details` lists `{ field, errors }` (technical, in English) |
+| `BAD_REQUEST` | 400 | Unreadable request, e.g. malformed JSON |
+| `UNAUTHORIZED` | 401 | No token, an invalid or expired token, or an unknown refresh token |
+| `FORBIDDEN` | 403 | The resource belongs to someone else |
+| `NOT_FOUND` | 404 | Unknown resource or route (also admin routes reached over the internet) |
+| `METHOD_NOT_ALLOWED` | 405 | Method not supported |
+| `CONFLICT` | 409 | Already done |
+| `PAYLOAD_TOO_LARGE` | 413 | Body or voice note too large |
+| `UNSUPPORTED_MEDIA_TYPE` | 415 | Content type not accepted |
+| `TOO_MANY_REQUESTS` | 429 | Per-IP rate limit |
+| `REQUEST_FAILED` | other 4xx | Any other client error |
+| `SERVICE_UNAVAILABLE` | 503 | Database down (`/health`, which also returns `"status": "down"`) |
+| `INTERNAL_ERROR` | 500 | Unexpected failure |
+
+Business codes:
+
+| Area | HTTP | Codes |
+|---|---|---|
+| Auth | 400 | `INVALID_PHONE`, `OTP_EXPIRED`, `OTP_INVALID`, `OTP_TOO_MANY_ATTEMPTS` |
+| Auth | 401 | `ACCOUNT_DISABLED` |
+| Auth | 429 | `OTP_RATE_LIMITED`, `OTP_DAILY_LIMIT` |
+| Auth | 503 | `SMS_PAUSED`, `SMS_FAILED` |
+| Roles and identity | 403 | `WRONG_ROLE`, `KYC_REQUIRED` |
+| Profile | 400 | `ROLE_LOCKED`, `LOCATION_INCOMPLETE`, `ACTIVE_MISSIONS`, `MONEY_PENDING` (account deletion) |
+| Places | 400 | `PLACE_NOT_FOUND` |
+| Jobs | 400 | `START_IN_PAST`, `JOB_LOCKED`, `JOB_HAS_ACTIVE_WORK` |
+| Hiring | 400 | `PAYOUT_METHOD_REQUIRED`, `OWN_JOB`, `JOB_NOT_OPEN`, `JOB_FULL`, `NOT_PENDING`, `NOT_WITHDRAWABLE` |
+| Hiring | 409 | `ALREADY_APPLIED` |
+| Escrow | 400 | `NOTHING_TO_FUND`, `PHONE_REQUIRED`, `PAYMENT_START_FAILED` |
+| Webhooks | 401 | `BAD_SIGNATURE`, `BAD_PAYLOAD` |
+| Work | 400 | `NOT_ACTIVE`, `NOT_TODAY`, `TOO_FAR`, `NOT_A_TASK`, `UNIT_CLOSED`, `FUTURE_DAY`, `NOT_DISPUTABLE`, `NOT_DISPUTED`, `ALREADY_ENDED` |
+| Messages | 400 | `EMPTY_MESSAGE`, `CONVERSATION_CLOSED`, `NO_AUDIO`, `BAD_AUDIO`, `BAD_DURATION` |
+| Reviews | 400 | `NOTHING_TO_REVIEW` |
+| Reviews | 409 | `ALREADY_REVIEWED` |
+
+A new error is thrown as
+`throw new BadRequestException({ code: 'RATE_TOO_LOW', message: 'Le tarif minimum est de 2 000 FCFA.' })`
+and added to this list.
 
 ## Before launch
 
