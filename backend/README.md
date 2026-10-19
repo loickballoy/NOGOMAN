@@ -1,0 +1,121 @@
+# Nogoman API
+
+Backend for the Nogoman mobile app and website: phone login, jobs on a map, hiring,
+escrow payments released day by day, and mobile money payouts.
+
+NestJS 11 · Prisma 6 · PostgreSQL 16 · Docker Compose · Cloudflare Tunnel.
+
+## How money moves
+
+Every franc goes through a double-entry ledger (`LedgerAccount`, `JournalEntry`, `Posting`).
+The postings of each entry sum to zero, and a database trigger rejects any entry that doesn't.
+Ledger rows can't be deleted.
+
+| Step | What happens | Ledger |
+|---|---|---|
+| Farmer hires workers | Engagement waits for funding | – |
+| Farmer pays (`POST /jobs/:id/funding`) | Payment is pending at the provider | – |
+| Provider confirms (signed webhook) | Work days are created, mission is active | provider clearing → job escrow |
+| Worker checks in (GPS, ≤ 2 km) | Day marked as attended | – |
+| Farmer confirms the day, **or 9:00 next morning** if the worker checked in | Day released | escrow → worker (rate − 2 %) + Nogoman (2 % + 2 %) |
+| No check-in and no confirmation | Day refunded | escrow → farmer |
+| Either side disputes | Held until an admin decides | – |
+| Payout batch (every 15 min) | One transfer per user, whatever was released | user balance → provider clearing |
+| Transfer fails | Money goes back to the balance, retried after 6 h | reversed |
+
+Task jobs ("à la tâche") have a single unit. It's paid when the farmer confirms, or 48 h
+after the worker marks it done if the farmer doesn't object.
+
+Fees are configurable (`FARMER_FEE_BPS`, `WORKER_FEE_BPS`; 200 = 2 %) and are fixed on each
+day at funding time. Later fee changes never affect missions already paid for.
+
+**The payment provider is a mock for now.** It goes through the same webhook path as a real
+one, so the aggregator (CinetPay / PayDunya / Flutterwave for Orange Money, MTN, Moov, Wave and
+cards) can be plugged in behind `PaymentProvider` without touching the escrow logic.
+
+## Privacy
+
+- Phone numbers are never returned for another user.
+- Farm coordinates are rounded to about 1 km until a worker is hired.
+- OTP codes and refresh tokens are stored hashed.
+- Refresh tokens rotate on every use. Reusing an old token logs out every session of that user.
+
+## Run locally
+
+```bash
+cp .env.example .env              # set DATABASE_URL, JWT_SECRET, OTP_SECRET, SMS_PROVIDER=console
+npm install
+npx prisma migrate deploy
+npm run start:dev                 # http://localhost:3000, docs at /docs
+```
+
+With `SMS_PROVIDER=console` the login codes are printed in the server log. With
+`ENABLE_DEV_ROUTES=true` (never in production) you can settle a mock payment or payout:
+
+```bash
+curl -X POST localhost:3000/dev/payments/collection/<paymentId>/simulate \
+  -H 'content-type: application/json' -d '{"status":"SUCCEEDED"}'
+```
+
+### Tests
+
+```bash
+npm test                           # unit tests
+npm run test:e2e                   # full flow against a real database whose name ends in _test
+TEST_DATABASE_URL=postgresql://user@host:5432/nogoman_test npm run test:e2e
+```
+
+## Deploy on the homelab
+
+1. **Install Docker** on the server and clone this repository.
+2. **Configure:** `cd backend && cp .env.example .env`, then fill it in:
+   - `POSTGRES_PASSWORD`, `JWT_SECRET`, `OTP_SECRET`, `MOCK_WEBHOOK_SECRET`: generate each with `openssl rand -base64 48`.
+   - `SMS_PROVIDER=africastalking` and your Africa's Talking credentials.
+   - `ADMIN_PHONES`: your own number in `+225…` form.
+3. **Create the tunnel.** In Cloudflare Zero Trust → Networks → Tunnels, create a tunnel and copy its token into `CLOUDFLARE_TUNNEL_TOKEN`. Add a public hostname such as `api.yourdomain.com` → `http://api:3000`.
+4. **Start:**
+   ```bash
+   docker compose --profile tunnel up -d --build
+   docker compose logs -f api
+   curl https://api.yourdomain.com/health
+   ```
+   Migrations run automatically every time the API starts.
+5. **Admin access over Tailscale:** set `API_BIND` to the server's Tailscale IP to reach port 3000 from your tailnet. The database is never published.
+
+**Backups:** a `backup` service dumps the database daily into `./backups`, keeping 7 days,
+4 weeks and 6 months. Copy that folder off the machine as well, e.g. with a nightly rclone to
+cloud storage, because a backup on the same disk doesn't survive a dead disk.
+
+**Moving to a VPS later:** copy `.env` and the latest dump, then run
+`docker compose --profile tunnel up -d --build` and restore the dump. Point the tunnel at the
+new host and the public URL stays the same.
+
+Before real money flows, see "Before launch" below.
+
+## API overview
+
+All routes need `Authorization: Bearer <accessToken>` except auth, health and webhooks.
+Full schema at `/docs`.
+
+| Area | Routes |
+|---|---|
+| Auth | `POST /auth/otp/request`, `POST /auth/otp/verify`, `POST /auth/refresh`, `POST /auth/logout` |
+| Profile | `GET /me`, `PATCH /me` (name, role once, location, mobile money number), `GET /users/:id`, `GET /users/:id/reviews` |
+| Jobs | `POST /jobs`, `GET /jobs?lat&lng&radiusKm&category&payMode`, `GET /jobs/mine`, `GET /jobs/:id`, `PATCH /jobs/:id`, `POST /jobs/:id/cancel` |
+| Hiring | `POST /jobs/:id/applications`, `GET /jobs/:id/applications`, `GET /applications/mine`, `POST /applications/:id/{hire,reject,withdraw}` |
+| Escrow | `GET /jobs/:id/funding/quote`, `POST /jobs/:id/funding`, `GET /payments/:id`, `POST /webhooks/payments/:provider` |
+| Work | `GET /engagements/mine`, `GET /engagements/:id`, `POST /engagements/:id/cancel`, `POST /work-units/:id/{check-in,done,confirm,dispute}`, `POST /jobs/:id/confirm-day` |
+| Payouts | `GET /me/payouts` |
+| Reviews | `POST /engagements/:id/reviews` |
+| Admin | `GET /admin/disputes`, `POST /admin/work-units/:id/resolve`, `POST /admin/users/:id/kyc`, `GET /admin/ledger/trial-balance`, `POST /admin/payouts/run`, `POST /admin/work/auto-release` |
+
+Errors carry a stable `code` (e.g. `PAYOUT_METHOD_REQUIRED`, `TOO_FAR`) and a French `message`
+the app can show or read aloud.
+
+## Before launch
+
+- [ ] Payment aggregator contract, then the real `PaymentProvider` (collections, payouts, webhook signature).
+- [ ] Smile ID verification, then set `REQUIRE_KYC_TO_TRANSACT=true`.
+- [ ] Chat with contact masking and in-app calls.
+- [ ] Off-site backups and uptime monitoring.
+- [ ] Terms of use and privacy policy filed with ARTCI (Ivorian data protection authority).
