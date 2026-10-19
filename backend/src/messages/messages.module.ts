@@ -1,5 +1,5 @@
 import {
-  Body, Controller, Get, HttpCode, Module, Param, Post, Query, Res, StreamableFile, UploadedFile, UseInterceptors,
+  Body, Controller, Get, HttpCode, Module, Param, Post, Query, Req, Res, StreamableFile, UploadedFile, UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiProperty, ApiTags } from '@nestjs/swagger';
@@ -7,7 +7,7 @@ import { Throttle } from '@nestjs/throttler';
 import { User } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { IsInt, IsISO8601, IsOptional, IsString, Length, Max, Min } from 'class-validator';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { CurrentUser } from '../common/decorators';
 import { MessagesService, UploadedAudio } from './messages.service';
 
@@ -15,9 +15,9 @@ class SendTextDto {
   @ApiProperty() @IsString() @Length(1, 1000) text: string;
 }
 
-class SendVoiceDto {
-  @ApiProperty({ description: 'Recording length in milliseconds' })
-  @Type(() => Number) @IsInt() @Min(1) @Max(600_000) durationMs: number;
+class VoiceQueryDto {
+  @ApiProperty({ description: 'Recording length in milliseconds', required: false })
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(600_000) durationMs?: number;
 }
 
 class PageDto {
@@ -57,11 +57,26 @@ export class MessagesController {
   }
 
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  /**
+   * Two ways in: the raw audio as the body (Content-Type: audio/mp4, ?durationMs=...), which is
+   * what the app sends, or a multipart form with an "audio" file and a durationMs field.
+   */
   @Post('conversations/:id/voice')
-  @ApiConsumes('multipart/form-data')
+  @ApiConsumes('audio/mp4', 'multipart/form-data')
   @UseInterceptors(FileInterceptor('audio', { limits: { fileSize: 3 * 1024 * 1024, files: 1 } }))
-  voice(@CurrentUser() user: User, @Param('id') id: string, @UploadedFile() file: UploadedAudio | undefined, @Body() dto: SendVoiceDto) {
-    return this.messages.sendVoice(user, id, file, dto.durationMs);
+  voice(
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+    @UploadedFile() upload: UploadedAudio | undefined,
+    @Query() q: VoiceQueryDto,
+    @Req() req: Request,
+  ) {
+    const rawBody = Buffer.isBuffer(req.body) && req.body.length > 0 ? req.body : null;
+    const file: UploadedAudio | undefined = rawBody
+      ? { buffer: rawBody, mimetype: String(req.headers['content-type'] ?? ''), size: rawBody.length }
+      : upload;
+    const durationMs = q.durationMs ?? Number(rawBody ? NaN : (req.body as Record<string, unknown>)?.durationMs);
+    return this.messages.sendVoice(user, id, file, durationMs);
   }
 
   @Get('messages/:id/audio')

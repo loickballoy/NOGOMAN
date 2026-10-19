@@ -126,27 +126,38 @@ export function accessToken(): string | undefined {
   return session?.getTokens()?.accessToken;
 }
 
-/** Multipart upload (voice notes). `file.uri` is a local file on phones, a blob: URL on web. */
+/**
+ * Uploads a voice note as the raw audio bytes (Content-Type: audio/...), with the other fields
+ * in the query string. No FormData: Expo's fetch rejects React Native-style file parts
+ * ("Unsupported FormDataPart implementation"), while a plain byte body always works.
+ * `file.uri` is a local file on phones and a blob: URL on web.
+ */
 export async function apiUpload<T>(path: string, fields: Record<string, string>, file: { uri: string; name: string; type: string }, retried = false): Promise<T> {
   await ensureFreshToken();
-  const form = new FormData();
-  for (const [k, v] of Object.entries(fields)) form.append(k, v);
-  if (Platform.OS === 'web') {
-    const blob = await (await fetch(file.uri)).blob();
-    form.append('audio', blob, file.name);
-  } else {
-    // Expo's fetch only accepts Blob-like parts (the old React Native { uri, name, type } form
-    // throws "Unsupported FormDataPart implementation"). expo-file-system's File is one.
-    const uri = /^[a-z]+:\/\//i.test(file.uri) ? file.uri : `file://${file.uri}`;
-    form.append('audio', new File(uri) as unknown as Blob, file.name);
+  let body: Uint8Array | Blob;
+  try {
+    if (Platform.OS === 'web') {
+      body = await (await fetch(file.uri)).blob();
+    } else {
+      const uri = /^[a-z]+:\/\//i.test(file.uri) ? file.uri : `file://${file.uri}`;
+      body = await new File(uri).bytes();
+    }
+  } catch (err) {
+    console.warn(`[upload] could not read ${file.uri}: ${String(err)}`);
+    throw new ApiError(0, 'FILE', 'Le message vocal n’a pas pu être lu. Réessayez.');
   }
   const tokens = session?.getTokens();
+  const query = new URLSearchParams(fields).toString();
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, {
+    res = await fetch(`${API_URL}${path}${query ? `?${query}` : ''}`, {
       method: 'POST',
-      headers: { Accept: 'application/json', ...(tokens ? { Authorization: `Bearer ${tokens.accessToken}` } : {}) },
-      body: form,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': file.type,
+        ...(tokens ? { Authorization: `Bearer ${tokens.accessToken}` } : {}),
+      },
+      body: body as BodyInit,
     });
   } catch (err) {
     // Shows up in the Metro terminal during development.

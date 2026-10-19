@@ -178,12 +178,20 @@ describe('Nogoman end-to-end flow', () => {
     expect(audio.headers['cross-origin-resource-policy']).toBe('cross-origin');
     await http().post(`/conversations/${conv.body.id}/voice`).set(auth(farmer.token))
       .field('durationMs', '4200').attach('audio', Buffer.from('<script>'), { filename: 'x.html', contentType: 'text/html' }).expect(400);
+    // What the app sends: the raw bytes as the body.
+    const rawVoice = await http().post(`/conversations/${conv.body.id}/voice`).query({ durationMs: 2500 }).set(auth(worker.token))
+      .set('Content-Type', 'audio/mp4').send(Buffer.from('raw-audio-bytes')).expect(201);
+    expect(rawVoice.body).toMatchObject({ kind: 'VOICE', audioMs: 2500, mine: true });
+    const rawAudio = await http().get(rawVoice.body.audioUrl).set(auth(farmer.token)).buffer(true).parse((res, cb) => {
+      const chunks: Buffer[] = []; res.on('data', (c: Buffer) => chunks.push(c)); res.on('end', () => cb(null, Buffer.concat(chunks)));
+    }).expect(200);
+    expect((rawAudio.body as Buffer).toString()).toBe('raw-audio-bytes');
     // An unlabelled part is accepted when the file name says it's audio.
     await http().post(`/conversations/${conv.body.id}/voice`).set(auth(farmer.token))
       .field('durationMs', '1500').attach('audio', Buffer.from('fake'), { filename: 'recording-1.m4a', contentType: 'application/octet-stream' }).expect(201);
 
     const thread = await http().get(`/conversations/${conv.body.id}/messages`).set(auth(farmer.token)).expect(200);
-    expect(thread.body.map((m: { kind: string; mine: boolean }) => [m.kind, m.mine])).toEqual([['TEXT', false], ['VOICE', true], ['VOICE', true]]);
+    expect(thread.body.map((m: { kind: string; mine: boolean }) => [m.kind, m.mine])).toEqual([['TEXT', false], ['VOICE', true], ['VOICE', false], ['VOICE', true]]);
     await http().post(`/conversations/${conv.body.id}/read`).set(auth(farmer.token)).expect(204);
     expect((await http().get('/conversations/unread').set(auth(farmer.token))).body.count).toBe(0);
 

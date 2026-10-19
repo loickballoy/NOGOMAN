@@ -1,5 +1,6 @@
 import { INestApplication, Logger, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { raw } from 'express';
 import helmet from 'helmet';
 import { AppConfig } from './config/app-config';
 
@@ -12,6 +13,9 @@ export function configureApp(app: INestApplication) {
   app.enableCors({ origin: config.corsOrigins.length ? config.corsOrigins : false });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   if (config.nodeEnv !== 'test') app.use(requestLogger());
+  // Voice notes arrive as the raw audio bytes (Content-Type: audio/...). Expo's fetch
+  // handles a plain byte body reliably, unlike multipart file parts.
+  app.use(raw({ type: 'audio/*', limit: '3mb' }));
   app.enableShutdownHooks();
 
   if (config.enableDocs) {
