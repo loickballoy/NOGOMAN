@@ -19,6 +19,7 @@ const CAN_SEND: ApplicationStatus[] = ['PENDING', 'HIRED'];
 export interface UploadedAudio {
   buffer: Buffer;
   mimetype: string;
+  originalname?: string;
   size: number;
 }
 
@@ -107,7 +108,9 @@ export class MessagesService {
     const c = await this.participant(user, conversationId, true);
     if (!file) throw new BadRequestException({ code: 'NO_AUDIO', message: 'Message vocal manquant.' });
     const mime = file.mimetype.split(';')[0].trim().toLowerCase();
-    const ext = AUDIO_TYPES[mime];
+    // Phones don't always label the part; fall back to the file extension.
+    const fromName = (file.originalname ?? '').split('.').pop()?.toLowerCase() ?? '';
+    const ext = AUDIO_TYPES[mime] ?? (EXT_TYPES[fromName] ? fromName : undefined);
     if (!ext) throw new BadRequestException({ code: 'BAD_AUDIO', message: 'Format audio non pris en charge.' });
     if (!Number.isFinite(durationMs) || durationMs < 300 || durationMs > this.config.maxVoiceSeconds * 1000) {
       throw new BadRequestException({ code: 'BAD_DURATION', message: `Message vocal de ${this.config.maxVoiceSeconds} secondes maximum.` });

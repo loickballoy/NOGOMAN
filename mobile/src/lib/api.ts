@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { File } from 'expo-file-system';
 import { Platform } from 'react-native';
 import { Tokens } from './types';
 
@@ -134,9 +135,10 @@ export async function apiUpload<T>(path: string, fields: Record<string, string>,
     const blob = await (await fetch(file.uri)).blob();
     form.append('audio', blob, file.name);
   } else {
-    // React Native's FormData takes a { uri, name, type } descriptor; the uri must be a file:// URL.
+    // Expo's fetch only accepts Blob-like parts (the old React Native { uri, name, type } form
+    // throws "Unsupported FormDataPart implementation"). expo-file-system's File is one.
     const uri = /^[a-z]+:\/\//i.test(file.uri) ? file.uri : `file://${file.uri}`;
-    form.append('audio', { ...file, uri } as unknown as Blob);
+    form.append('audio', new File(uri) as unknown as Blob, file.name);
   }
   const tokens = session?.getTokens();
   let res: Response;

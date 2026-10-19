@@ -178,9 +178,12 @@ describe('Nogoman end-to-end flow', () => {
     expect(audio.headers['cross-origin-resource-policy']).toBe('cross-origin');
     await http().post(`/conversations/${conv.body.id}/voice`).set(auth(farmer.token))
       .field('durationMs', '4200').attach('audio', Buffer.from('<script>'), { filename: 'x.html', contentType: 'text/html' }).expect(400);
+    // An unlabelled part is accepted when the file name says it's audio.
+    await http().post(`/conversations/${conv.body.id}/voice`).set(auth(farmer.token))
+      .field('durationMs', '1500').attach('audio', Buffer.from('fake'), { filename: 'recording-1.m4a', contentType: 'application/octet-stream' }).expect(201);
 
     const thread = await http().get(`/conversations/${conv.body.id}/messages`).set(auth(farmer.token)).expect(200);
-    expect(thread.body.map((m: { kind: string; mine: boolean }) => [m.kind, m.mine])).toEqual([['TEXT', false], ['VOICE', true]]);
+    expect(thread.body.map((m: { kind: string; mine: boolean }) => [m.kind, m.mine])).toEqual([['TEXT', false], ['VOICE', true], ['VOICE', true]]);
     await http().post(`/conversations/${conv.body.id}/read`).set(auth(farmer.token)).expect(204);
     expect((await http().get('/conversations/unread').set(auth(farmer.token))).body.count).toBe(0);
 
