@@ -93,6 +93,32 @@ npm run build
 Frontend (racine du dépôt) : seuls `npm run dev` et `npm run build` existent pour l'instant ; le
 typecheck, les tests Playwright et la CI frontend arrivent avec le Lot 3.
 
+## Helpers e2e
+
+`backend/test/helpers.ts` (exemple d'usage : `backend/test/helpers.e2e-spec.ts`) :
+
+```ts
+const phone = phones('015');                     // 3 chiffres, un préfixe par fichier (n° d'issue)
+const t = await bootApp({ FARMER_FEE_BPS: '0' }, { phones: phone });
+const { farmer, worker } = await t.farmerAndWorker();
+const job = await t.postJob(farmer, { payMode: 'TASK', rateXof: 25000 });
+const { engagementId } = await t.hiredOn(job, worker); // sans worker : un nouvel ouvrier
+await t.fundAndSettle(job);                      // financement + webhook mock signé
+const task = await t.paidTask(farmer, worker, 10000); // solde de l'ouvrier crédité de task.netXof
+await t.http().get('/me').set(auth(worker.token)).expect(200);
+await t.close();
+```
+
+- `bootApp(env, { phones?, override? })` applique `env` par-dessus `test/env.ts`, démarre l'API puis
+  restaure `process.env`. Plusieurs instances peuvent tourner en même temps sur la même base (chacune a
+  sa boîte SMS et ses compteurs de limite par IP). `override` remplace un provider (ex. `GEOCODER`).
+  `OTP_*_PER_IP_MINUTE` sont lus à chaque requête : les régler dans `test/env.ts`, pas dans `bootApp`.
+- `login(app, phone)` (OTP via `ConsoleSmsProvider`), `auth(token)`, `phones(prefix)` : numéros fictifs
+  `07<prefix><5 chiffres>`, préfixes `081` et `998` réservés à `flow.e2e-spec.ts`.
+- Tous les fichiers e2e partagent la base : n'asserter que des états relatifs (solde de *cet*
+  utilisateur, séquestre de *cette* mission), jamais des totaux globaux. `flow.e2e-spec.ts`, qui en
+  fait, passe en premier (`test/sequencer.js`).
+
 ## Où trouver les choses (backend)
 
 | Sujet | Fichier |
