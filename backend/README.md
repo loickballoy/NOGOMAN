@@ -68,11 +68,13 @@ TEST_DATABASE_URL=postgresql://user@host:5432/nogoman_test npm run test:e2e
 ## Deploy on the homelab
 
 1. **Install Docker** on the server and clone this repository.
-2. **Configure:** `cd backend && cp .env.example .env`, then fill it in:
-   - `POSTGRES_PASSWORD`, `JWT_SECRET`, `OTP_SECRET`, `MOCK_WEBHOOK_SECRET`: generate each with `openssl rand -base64 48`.
+2. **Configure:** `cd backend && ./scripts/init-env.sh` creates `.env` with every secret generated. Then fill in:
    - `SMS_PROVIDER=africastalking` and your Africa's Talking credentials.
    - `ADMIN_PHONES`: your own number in `+225…` form.
 3. **Create the tunnel.** In Cloudflare Zero Trust → Networks → Tunnels, create a tunnel and copy its token into `CLOUDFLARE_TUNNEL_TOKEN`. Add a public hostname such as `api.yourdomain.com` → `http://api:3000`.
+   *Already running cloudflared for another project?* Reuse that tunnel instead: add the public
+   hostname there pointing to `http://<server LAN IP>:3000`, set `API_BIND=0.0.0.0` (or the LAN IP),
+   and start without `--profile tunnel`.
 4. **Start:**
    ```bash
    docker compose --profile tunnel up -d --build
