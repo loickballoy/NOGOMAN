@@ -65,6 +65,22 @@ npm run test:e2e                   # full flow against a real database whose nam
 TEST_DATABASE_URL=postgresql://user@host:5432/nogoman_test npm run test:e2e
 ```
 
+## Run on the homelab without a domain
+
+```bash
+cd backend
+./scripts/init-env.sh --local     # secrets generated, login codes in the logs, docs on, simulated payments
+docker compose up -d --build
+curl localhost:3000/health        # {"status":"ok"}
+```
+
+- Docs: http://localhost:3000/docs
+- Login codes: `docker compose logs -f api | grep "votre code"`
+- To reach the API from your phone or laptop over Tailscale, set `API_BIND=` to the server's
+  Tailscale IP (`tailscale ip -4`) and run `docker compose up -d` again. It stays private to your tailnet.
+
+When you have a domain, follow the steps below and switch `.env` to production settings.
+
 ## Deploy on the homelab
 
 1. **Install Docker** on the server and clone this repository.
