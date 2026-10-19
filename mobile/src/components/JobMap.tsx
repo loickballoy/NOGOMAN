@@ -7,17 +7,21 @@ import { T } from './ui';
 
 export interface JobMapProps {
   center: { lat: number; lng: number };
+  /** Rough width of the area to show, in km. */
+  spanKm: number;
   jobs: Job[];
   selectedId?: string;
   onSelect: (job: Job) => void;
 }
 
 /** Price pins on the map, like the design: black pills, the selected one in green. */
-export function JobMap({ center, jobs, selectedId, onSelect }: JobMapProps) {
+export function JobMap({ center, spanKm, jobs, selectedId, onSelect }: JobMapProps) {
+  const delta = Math.min(spanKm / 111, 12);
   return (
     <MapView
+      key={spanKm}
       style={{ flex: 1 }}
-      initialRegion={{ latitude: center.lat, longitude: center.lng, latitudeDelta: 0.35, longitudeDelta: 0.35 }}
+      initialRegion={{ latitude: center.lat, longitude: center.lng, latitudeDelta: delta, longitudeDelta: delta }}
       showsUserLocation
       toolbarEnabled={false}>
       {jobs.map((job) => (

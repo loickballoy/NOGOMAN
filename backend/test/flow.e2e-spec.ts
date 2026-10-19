@@ -117,8 +117,14 @@ describe('Nogoman end-to-end flow', () => {
     expect(found.body[0].farmer.phone).toBeUndefined();
     expect(found.body[0].address).toBeNull(); // full address only once hired
 
+    // From Abidjan (~300 km away): hidden by a 20 km radius, found when searching the whole country.
     const elsewhere = await http().get('/jobs').query({ lat: 5.35, lng: -4.0, radiusKm: 20 }).set(auth(worker.token)).expect(200);
     expect(elsewhere.body).toHaveLength(0);
+    const countrywide = await http().get('/jobs').query({ lat: 5.35, lng: -4.0 }).set(auth(worker.token)).expect(200);
+    expect(countrywide.body.map((j: { id: string }) => j.id)).toEqual([jobId]);
+    expect(countrywide.body[0].distanceKm).toBeGreaterThan(250);
+    const nextPage = await http().get('/jobs').query({ lat: 5.35, lng: -4.0, offset: 1 }).set(auth(worker.token)).expect(200);
+    expect(nextPage.body).toHaveLength(0);
   });
 
   it('searches and names places for the farm location step', async () => {

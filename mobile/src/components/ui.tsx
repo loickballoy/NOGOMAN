@@ -12,9 +12,15 @@ export function T({ style, children, numberOfLines, variant = 'body', color }: {
   style?: TextStyle | TextStyle[]; children: ReactNode; numberOfLines?: number;
   variant?: keyof typeof type; color?: string;
 }) {
+  const flat = StyleSheet.flatten([type[variant] as TextStyle, { color: color ?? colors.ink }, style]);
+  // A bigger fontSize on top of a variant keeps the variant's line height, and iOS then clips
+  // the top and bottom of the glyphs (seen on the code boxes). Give big text room to breathe.
+  if (flat.fontSize && (!flat.lineHeight || flat.lineHeight < flat.fontSize * 1.15)) {
+    flat.lineHeight = Math.round(flat.fontSize * 1.25);
+  }
   return (
     // Large system text sizes are honoured, up to the point where layouts would break.
-    <Text numberOfLines={numberOfLines} maxFontSizeMultiplier={MAX_FONT_SCALE} style={[type[variant] as TextStyle, { color: color ?? colors.ink }, style as TextStyle]}>
+    <Text numberOfLines={numberOfLines} maxFontSizeMultiplier={MAX_FONT_SCALE} style={flat}>
       {children}
     </Text>
   );

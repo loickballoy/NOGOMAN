@@ -60,8 +60,8 @@ export class JobsService {
   }
 
   async search(viewer: User, q: SearchJobsDto) {
-    const radiusKm = q.radiusKm ?? 25;
-    const box = boundingBox(q.lat, q.lng, radiusKm);
+    // No radius means every open job, nearest first.
+    const box = q.radiusKm ? boundingBox(q.lat, q.lng, q.radiusKm) : null;
     const rows = await this.prisma.$queryRaw<{ id: string; distance: number }[]>`
       SELECT id, distance FROM (
         SELECT "id",
@@ -72,14 +72,13 @@ export class JobsService {
         FROM "Job"
         WHERE "status" = 'OPEN'
           AND "startDate" >= ${todayLocal()}
-          AND "lat" BETWEEN ${box.minLat} AND ${box.maxLat}
-          AND "lng" BETWEEN ${box.minLng} AND ${box.maxLng}
+          ${box ? Prisma.sql`AND "lat" BETWEEN ${box.minLat} AND ${box.maxLat} AND "lng" BETWEEN ${box.minLng} AND ${box.maxLng}` : Prisma.empty}
           ${q.category ? Prisma.sql`AND "category" = ${q.category}::"JobCategory"` : Prisma.empty}
           ${q.payMode ? Prisma.sql`AND "payMode" = ${q.payMode}::"PayMode"` : Prisma.empty}
       ) s
-      WHERE distance <= ${radiusKm}
-      ORDER BY distance
-      LIMIT ${q.limit ?? 30}`;
+      ${q.radiusKm ? Prisma.sql`WHERE distance <= ${q.radiusKm}` : Prisma.empty}
+      ORDER BY distance, id
+      LIMIT ${q.limit ?? 30} OFFSET ${q.offset ?? 0}`;
 
     const jobs = await this.prisma.job.findMany({
       where: { id: { in: rows.map((r) => r.id) } },

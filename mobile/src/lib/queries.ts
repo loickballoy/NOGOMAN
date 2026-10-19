@@ -17,11 +17,13 @@ export const keys = {
   payouts: ['payouts'] as const,
 };
 
-export const useJobsNear = (lat?: number, lng?: number) =>
+/** Open jobs nearest first. `radiusKm` null = the whole country (people travel for farm work). */
+export const useJobsNear = (lat: number | undefined, lng: number | undefined, radiusKm: number | null, limit: number) =>
   useQuery({
-    queryKey: keys.jobsNear(lat ?? 0, lng ?? 0),
-    queryFn: () => api<Job[]>(`/jobs?lat=${lat}&lng=${lng}&radiusKm=40`),
+    queryKey: [...keys.jobsNear(lat ?? 0, lng ?? 0), radiusKm ?? 'all', limit],
+    queryFn: () => api<Job[]>(`/jobs?lat=${lat}&lng=${lng}&limit=${limit}${radiusKm ? `&radiusKm=${radiusKm}` : ''}`),
     enabled: lat !== undefined && lng !== undefined,
+    placeholderData: (previous) => previous,
   });
 
 export const useMyJobs = () => useQuery({ queryKey: keys.myJobs, queryFn: () => api<Job[]>('/jobs/mine') });

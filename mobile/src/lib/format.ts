@@ -3,9 +3,10 @@ export function fcfa(n: number): string {
   return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0');
 }
 
-/** 0.2 -> "0,2 km" */
+/** 0.2 -> "0,2 km", 359.3 -> "359 km" */
 export function km(n: number): string {
-  return `${String(n).replace('.', ',')}\u00A0km`;
+  const v = n >= 10 ? String(Math.round(n)) : String(n).replace('.', ',');
+  return `${v}\u00A0km`;
 }
 
 /** "aujourd'hui" -> "Aujourd'hui" for labels that start a line. */
