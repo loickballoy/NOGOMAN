@@ -58,13 +58,17 @@ Elles s'appliquent à toutes les tâches. Si une issue semble les contredire, s'
   avancent en parallèle : ne pas toucher au périmètre d'une autre sous-issue ouverte.
 - **Tests d'abord, en deux temps dans la même PR :**
   1. un commit « tests (rouges) » écrit **à partir de l'issue et de la spécification**, pas du code. Les
-     tests passent par l'API HTTP et les noms de variables d'env de la spécification, et compilent sur
-     le code existant. Pousser, indiquer dans la PR quels tests échouent et pourquoi, puis **attendre la
-     validation du mainteneur** ;
+     tests passent par l'API HTTP et les noms de variables d'env de la spécification. Ils compilent sur
+     le code existant, **sauf** quand ils visent un module que l'issue demande de créer (pas d'API HTTP
+     pour l'atteindre) : un échec de compilation sur ce seul import est alors un rouge accepté, à
+     signaler dans la PR. Pousser, indiquer dans la PR quels tests échouent et pourquoi, puis
+     **attendre la validation du mainteneur** ;
   2. l'implémentation, **sans modifier les tests validés**. Si un test validé se révèle faux, le corriger
      dans un commit séparé et le justifier dans la PR.
 - Contrat d'API : codes HTTP et `code` d'erreur tels qu'écrits dans l'issue ou l'épique. Un nouveau code
   d'erreur est ajouté au README.
+- Tout nouveau `@Cron` passe par `withAdvisoryLock` (`backend/src/common/advisory-lock.ts`, règle 7) :
+  si une autre instance tient déjà le verrou du même nom, l'exécution est sautée (`{ ran: false }`).
 - Labels : `epic`, `lot:0` … `lot:8`. Le type de chaque issue (backend, frontend, infra, tests-first,
   règle permanente, bloqué-externe) est écrit en tête de son corps.
 
@@ -131,6 +135,7 @@ await t.close();
 | Financement, webhooks (`WebhookEvent`) | `backend/src/payments/payments.service.ts` |
 | Payouts | `backend/src/payouts/payouts.service.ts` |
 | Check-in, confirmation, libération, remboursement, auto-release | `backend/src/work/work.service.ts` |
+| Verrou des tâches planifiées (`withAdvisoryLock`, règle 7) | `backend/src/common/advisory-lock.ts` |
 | Ce qu'un utilisateur voit d'un autre (règle 8) | `backend/src/users/user.presenter.ts`, `backend/src/jobs/job.presenter.ts` |
 | Auth, rôles, routes publiques | `backend/src/common/guards.ts`, `backend/src/common/decorators.ts` |
 | Routes admin | `backend/src/admin/admin.controller.ts` |

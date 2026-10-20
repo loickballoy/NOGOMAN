@@ -12,7 +12,9 @@ export class HealthController {
     try {
       await this.prisma.$queryRaw`SELECT 1`;
     } catch {
-      throw new ServiceUnavailableException({ status: 'down' });
+      throw new ServiceUnavailableException({
+        code: 'SERVICE_UNAVAILABLE', message: 'Service momentanément indisponible. Réessayez plus tard.', status: 'down',
+      });
     }
     return { status: 'ok' };
   }

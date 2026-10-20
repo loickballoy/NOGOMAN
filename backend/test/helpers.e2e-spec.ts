@@ -48,13 +48,13 @@ describe('e2e helpers (smoke)', () => {
   });
 
   it('pays a task and credits the worker with the net amount', async () => {
-    const t = await boot({ WORKER_FEE_BPS: '200' }, { phones: phone });
+    const t = await boot({ FARMER_FEE_BPS: '200', WORKER_FEE_BPS: '200' }, { phones: phone });
     const { farmer, worker } = await t.farmerAndWorker();
     const before = (await t.http().get('/me/payouts').set(auth(worker.token)).expect(200)).body.balanceXof;
 
     const task = await t.paidTask(farmer, worker, 10_000);
     expect(task.netXof).toBe(9800);
-    expect(task.funding.amountXof).toBe(10_200); // default FARMER_FEE_BPS = 200
+    expect(task.funding.amountXof).toBe(10_200);
 
     const after = (await t.http().get('/me/payouts').set(auth(worker.token)).expect(200)).body.balanceXof;
     expect(after - before).toBe(9800);
