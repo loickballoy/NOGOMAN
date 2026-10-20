@@ -235,7 +235,7 @@ function wrap(app: INestApplication, options: BootOptions): TestApp {
         eventId, kind: 'collection', providerRef: pay.body.providerRef, status: 'SUCCEEDED', amountXof: pay.body.amountXof,
       });
       await http().post('/webhooks/payments/mock').set('Content-Type', 'application/json')
-        .set('x-mock-signature', app.get(MockPaymentProvider).sign(body)).send(body).expect(200);
+        .set(app.get(MockPaymentProvider).signedHeaders(body)).send(body).expect(200);
       const settled = await http().get(`/payments/${pay.body.id}`).set(auth(job.farmer.token)).expect(200);
       if (settled.body.status !== 'SUCCEEDED') throw new Error(`fundAndSettle(): payment is ${settled.body.status}`);
       return { paymentId: pay.body.id, amountXof: pay.body.amountXof, eventId };
