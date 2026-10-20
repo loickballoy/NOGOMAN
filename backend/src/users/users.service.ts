@@ -33,7 +33,7 @@ export class UsersService {
     const payoutChanged = Boolean(user.payoutPhone) && (
       (payoutPhone !== undefined && payoutPhone !== user.payoutPhone)
       || (dto.payoutOperator !== undefined && dto.payoutOperator !== user.payoutOperator));
-    const holdUntil = payoutChanged ? new Date(Date.now() + this.config.payoutHoldHours * 3600 * 1000) : undefined;
+    const holdUntil = payoutChanged ? new Date(Date.now() + this.config.payoutCooldownHours * 3600 * 1000) : undefined;
 
     const updated = await this.prisma.user.update({
       where: { id: user.id },
@@ -52,7 +52,7 @@ export class UsersService {
     if (payoutChanged) {
       this.logger.warn(`user ${user.id} changed payout number: payouts held until ${holdUntil!.toISOString()}`);
       await this.sms.send(user.phone,
-        `Nogoman : votre numéro de paiement a été modifié. Les versements reprennent dans ${this.config.payoutHoldHours} h. `
+        `Nogoman : votre numéro de paiement a été modifié. Les versements reprennent dans ${this.config.payoutCooldownHours} h. `
         + 'Si ce n’est pas vous, contactez Nogoman tout de suite.').catch(() => undefined);
     }
     return updated;

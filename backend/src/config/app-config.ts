@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 
 type Env = Record<string, string | undefined>;
 
@@ -68,7 +68,8 @@ export class AppConfig {
   readonly taskAutoReleaseHours: number;
   readonly checkInRadiusKm: number;
   readonly minPayoutXof: number;
-  readonly payoutHoldHours: number;
+  /** How long payouts wait after an existing payout number or operator is replaced. */
+  readonly payoutCooldownHours: number;
   readonly requireKycToTransact: boolean;
 
   readonly uploadDir: string;
@@ -145,7 +146,18 @@ export class AppConfig {
     this.taskAutoReleaseHours = int(env, 'TASK_AUTO_RELEASE_HOURS', 48);
     this.checkInRadiusKm = Number(env.CHECKIN_RADIUS_KM ?? 2);
     this.minPayoutXof = int(env, 'MIN_PAYOUT_XOF', 100);
-    this.payoutHoldHours = int(env, 'PAYOUT_HOLD_HOURS', 48);
+    // PAYOUT_HOLD_HOURS is the old name of PAYOUT_COOLDOWN_HOURS: still read, with a warning.
+    const legacyHold = env.PAYOUT_HOLD_HOURS !== undefined && env.PAYOUT_HOLD_HOURS !== '';
+    const cooldownSet = env.PAYOUT_COOLDOWN_HOURS !== undefined && env.PAYOUT_COOLDOWN_HOURS !== '';
+    this.payoutCooldownHours = cooldownSet || !legacyHold
+      ? int(env, 'PAYOUT_COOLDOWN_HOURS', 72)
+      : int(env, 'PAYOUT_HOLD_HOURS', 72);
+    if (this.payoutCooldownHours < 0) throw new Error('PAYOUT_COOLDOWN_HOURS must be 0 or more');
+    if (legacyHold) {
+      new Logger(AppConfig.name).warn(cooldownSet
+        ? 'PAYOUT_HOLD_HOURS is ignored: PAYOUT_COOLDOWN_HOURS is set. Remove PAYOUT_HOLD_HOURS.'
+        : 'PAYOUT_HOLD_HOURS is deprecated: rename it to PAYOUT_COOLDOWN_HOURS.');
+    }
     this.requireKycToTransact = bool(env, 'REQUIRE_KYC_TO_TRANSACT', false);
 
     this.uploadDir = env.UPLOAD_DIR ?? './uploads';
