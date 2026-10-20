@@ -68,6 +68,8 @@ export class AppConfig {
   readonly taskAutoReleaseHours: number;
   readonly checkInRadiusKm: number;
   readonly minPayoutXof: number;
+  readonly instantPayoutMinXof: number;
+  readonly payoutsEnabled: boolean;
   readonly payoutHoldHours: number;
   readonly requireKycToTransact: boolean;
 
@@ -145,6 +147,10 @@ export class AppConfig {
     this.taskAutoReleaseHours = int(env, 'TASK_AUTO_RELEASE_HOURS', 48);
     this.checkInRadiusKm = Number(env.CHECKIN_RADIUS_KM ?? 2);
     this.minPayoutXof = int(env, 'MIN_PAYOUT_XOF', 100);
+    this.instantPayoutMinXof = int(env, 'INSTANT_PAYOUT_MIN_XOF', 10_000);
+    if (this.instantPayoutMinXof < 1) throw new Error('INSTANT_PAYOUT_MIN_XOF must be at least 1');
+    // Emergency switch: false stops every new payout; balances are kept and webhooks still settle.
+    this.payoutsEnabled = bool(env, 'PAYOUTS_ENABLED', true);
     this.payoutHoldHours = int(env, 'PAYOUT_HOLD_HOURS', 48);
     this.requireKycToTransact = bool(env, 'REQUIRE_KYC_TO_TRANSACT', false);
 

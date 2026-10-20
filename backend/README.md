@@ -21,7 +21,25 @@ Ledger rows can't be deleted.
 | No check-in and no confirmation | Day refunded | escrow → farmer |
 | Either side disputes | Held until an admin decides | – |
 | Payout batch (every 15 min) | One transfer per user, whatever was released | user balance → provider clearing |
+| Instant payout (`POST /me/payouts/instant`) | The whole balance at once, from `INSTANT_PAYOUT_MIN_XOF` (10 000), free | user balance → provider clearing |
 | Transfer fails | Money goes back to the balance, retried after 6 h | reversed |
+
+### Instant payout
+
+`POST /me/payouts/instant` (worker or farmer) sends the whole balance now instead of waiting
+for the batch, once it reaches `INSTANT_PAYOUT_MIN_XOF` (default 10 000 FCFA). It costs
+nothing: no fee, and the same ledger entries as the batch (`PAYOUT`, then `PAYOUT_REVERSAL`
+if the transfer fails). The answer, `201 { id, amountXof, status: "PENDING", operator }`,
+never contains the payout number. The batch and the instant payout share one function
+(`PayoutsService.attemptPayout`), which checks, in this order and under the user's row lock:
+payouts switched on, payout number set, no safety delay after a number change, no transfer
+already pending, no failure in the last 6 h, balance at least the threshold.
+
+### Emergency switch
+
+`PAYOUTS_ENABLED=false` suspends every new payout (batch, `POST /admin/payouts/run`, instant
+payout, which answers 503 `PAYOUTS_SUSPENDED`). Balances are kept untouched, nothing is written
+to the ledger, and webhooks for transfers already sent are still applied.
 
 Task jobs ("à la tâche") have a single unit. It's paid when the farmer confirms, or 48 h
 after the worker marks it done if the farmer doesn't object.
@@ -166,7 +184,7 @@ Full schema at `/docs`.
 | Hiring | `POST /jobs/:id/applications`, `GET /jobs/:id/applications`, `GET /applications/mine`, `POST /applications/:id/{hire,reject,withdraw}` |
 | Escrow | `GET /jobs/:id/funding/quote`, `POST /jobs/:id/funding`, `GET /payments/:id`, `POST /webhooks/payments/:provider` |
 | Work | `GET /engagements/mine`, `GET /engagements/:id`, `POST /engagements/:id/cancel`, `POST /work-units/:id/{check-in,done,confirm,dispute}`, `POST /jobs/:id/confirm-day` |
-| Payouts | `GET /me/payouts` |
+| Payouts | `GET /me/payouts`, `POST /me/payouts/instant` |
 | Messages | `GET /conversations`, `GET /conversations/unread`, `POST /applications/:id/conversation`, `GET/POST /conversations/:id/messages`, `POST /conversations/:id/voice`, `GET /messages/:id/audio`, `POST /conversations/:id/read` |
 | Reviews | `POST /engagements/:id/reviews` |
 | Admin | `GET /admin/disputes`, `POST /admin/work-units/:id/resolve`, `POST /admin/users/:id/kyc`, `GET /admin/ledger/trial-balance`, `POST /admin/payouts/run`, `POST /admin/work/auto-release` |
@@ -219,6 +237,9 @@ Business codes:
 | Webhooks | 401 | `BAD_SIGNATURE`, `BAD_PAYLOAD` |
 | Work | 400 | `NOT_ACTIVE`, `NOT_TODAY`, `TOO_FAR`, `NOT_A_TASK`, `UNIT_CLOSED`, `FUTURE_DAY`, `NOT_DISPUTABLE`, `NOT_DISPUTED`, `ALREADY_ENDED` |
 | Messages | 400 | `EMPTY_MESSAGE`, `CONVERSATION_CLOSED`, `NO_AUDIO`, `BAD_AUDIO`, `BAD_DURATION` |
+| Payouts | 400 | `INSTANT_PAYOUT_TOO_LOW`, `PAYOUT_METHOD_REQUIRED` |
+| Payouts | 409 | `PAYOUT_COOLDOWN` (safety delay after a number change, or a failed transfer under 6 h old), `PAYOUT_IN_PROGRESS` |
+| Payouts | 503 | `PAYOUTS_SUSPENDED` |
 | Reviews | 400 | `NOTHING_TO_REVIEW` |
 | Reviews | 409 | `ALREADY_REVIEWED` |
 

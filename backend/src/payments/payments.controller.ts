@@ -55,6 +55,15 @@ export class PaymentsController {
     return this.payouts.history(user.id);
   }
 
+  /**
+   * Withdraws the whole balance now, without waiting for the daily payout, once it reaches
+   * INSTANT_PAYOUT_MIN_XOF. Free. Open to farmers (refunds) and workers alike.
+   */
+  @Post('me/payouts/instant')
+  instantPayout(@CurrentUser() user: User) {
+    return this.payouts.payNow(user.id);
+  }
+
   @Public()
   @SkipThrottle()
   @Post('webhooks/payments/:provider')
