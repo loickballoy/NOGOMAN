@@ -32,13 +32,13 @@ export class MockPaymentProvider implements PaymentProvider {
     const signature = headers['x-mock-signature'];
     if (typeof signature !== 'string' || !/^[0-9a-f]{64}$/.test(signature)
       || !safeEqualHex(signature, this.sign(rawBody.toString('utf8')))) {
-      throw new UnauthorizedException({ code: 'BAD_SIGNATURE' });
+      throw new UnauthorizedException({ code: 'BAD_SIGNATURE', message: 'Signature du webhook invalide.' });
     }
     const body = JSON.parse(rawBody.toString('utf8'));
     if (!['collection', 'payout'].includes(body.kind) || !['SUCCEEDED', 'FAILED'].includes(body.status)
       || typeof body.eventId !== 'string' || typeof body.providerRef !== 'string'
       || (body.amountXof !== undefined && !Number.isInteger(body.amountXof))) {
-      throw new UnauthorizedException({ code: 'BAD_PAYLOAD' });
+      throw new UnauthorizedException({ code: 'BAD_PAYLOAD', message: 'Contenu du webhook invalide.' });
     }
     return body as WebhookEvent;
   }
