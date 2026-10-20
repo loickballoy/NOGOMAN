@@ -72,7 +72,9 @@ per second and cached for a day. For heavier traffic, self-host Nominatim and se
 - Changing an existing payout number holds payouts for `PAYOUT_HOLD_HOURS` (48 h) and warns
   the account owner by SMS, so a stolen phone or account can't redirect the money at once.
 - Payment webhooks must be signed, are applied once, and never activate escrow if the amount
-  reported by the provider differs from what was asked.
+  reported by the provider differs from what was asked. Their signed timestamp must be less than
+  5 minutes old and at most 1 minute ahead (`WEBHOOK_EXPIRED` otherwise). The mock signs
+  `${x-mock-timestamp}.${rawBody}` (Unix seconds) with `MOCK_WEBHOOK_SECRET` in `x-mock-signature`.
 - Admin routes answer only over Tailscale or the LAN (`ADMIN_OVER_INTERNET=false`). Every admin
   call is logged.
 - `DELETE /me` deletes the account: name, number, location, payout number and messages are
@@ -220,6 +222,7 @@ Business codes:
 | Hiring | 409 | `ALREADY_APPLIED` |
 | Escrow | 400 | `NOTHING_TO_FUND`, `PHONE_REQUIRED`, `PAYMENT_START_FAILED` |
 | Webhooks | 401 | `BAD_SIGNATURE`, `BAD_PAYLOAD` |
+| Webhooks | 400 | `WEBHOOK_EXPIRED` (signed timestamp more than 5 min old or more than 1 min ahead) |
 | Work | 400 | `NOT_ACTIVE`, `NOT_TODAY`, `TOO_FAR`, `NOT_A_TASK`, `UNIT_CLOSED`, `FUTURE_DAY`, `NOT_DISPUTABLE`, `NOT_DISPUTED`, `ALREADY_ENDED` |
 | Messages | 400 | `EMPTY_MESSAGE`, `CONVERSATION_CLOSED`, `NO_AUDIO`, `BAD_AUDIO`, `BAD_DURATION` |
 | Reviews | 400 | `NOTHING_TO_REVIEW` |

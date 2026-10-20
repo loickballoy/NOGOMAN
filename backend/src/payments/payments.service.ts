@@ -9,6 +9,11 @@ import { planUnits, unitsFees, unitsTotal } from '../work/work-units';
 import { FundJobDto } from './dto';
 import { PAYMENT_PROVIDER, PaymentProvider, WebhookEvent } from './providers/payment-provider';
 
+/** Signed webhooks older than this are refused (rule 6). */
+const WEBHOOK_MAX_AGE_MS = 5 * 60_000;
+/** Tolerated clock drift for webhooks dated in the future. */
+const WEBHOOK_MAX_AHEAD_MS = 60_000;
+
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
@@ -98,6 +103,7 @@ export class PaymentsService {
   async handleWebhook(providerName: string, headers: Record<string, string | string[] | undefined>, rawBody: Buffer) {
     if (providerName !== this.provider.name) throw new NotFoundException();
     const event = this.provider.parseWebhook(headers, rawBody);
+    this.assertFresh(event.occurredAt);
     try {
       await this.prisma.webhookEvent.create({
         data: { provider: providerName, eventId: event.eventId, payload: event as unknown as Prisma.InputJsonValue },
@@ -108,6 +114,20 @@ export class PaymentsService {
     }
     await this.applyEvent(event);
     return { ok: true };
+  }
+
+  /**
+   * Rule 6: a signed event more than 5 minutes old, or dated more than 1 minute ahead, is a replay
+   * or a broken clock. It is refused before anything is recorded, so the provider's retry still works.
+   */
+  private assertFresh(occurredAt: Date, now = Date.now()) {
+    const at = occurredAt instanceof Date ? occurredAt.getTime() : NaN;
+    if (Number.isNaN(at) || now - at > WEBHOOK_MAX_AGE_MS || at - now > WEBHOOK_MAX_AHEAD_MS) {
+      throw new BadRequestException({
+        code: 'WEBHOOK_EXPIRED',
+        message: 'Notification de paiement trop ancienne ou mal datée. Elle est refusée.',
+      });
+    }
   }
 
   async applyEvent(event: WebhookEvent) {
