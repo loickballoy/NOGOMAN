@@ -61,7 +61,7 @@ describe('emergency stop of payouts (PAYOUTS_ENABLED)', () => {
       eventId, kind: 'payout', providerRef: payout.providerRef, status, reason: 'number_blocked', amountXof: payout.amountXof,
     });
     await t.http().post('/webhooks/payments/mock').set('Content-Type', 'application/json')
-      .set('x-mock-signature', t.app.get(MockPaymentProvider).sign(body)).send(body).expect(200);
+      .set(t.app.get(MockPaymentProvider).signedHeaders(body)).send(body).expect(200);
     return eventId;
   };
 
