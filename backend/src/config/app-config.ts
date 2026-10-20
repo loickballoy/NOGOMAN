@@ -136,8 +136,10 @@ export class AppConfig {
     this.paymentProvider = payment;
     this.mockWebhookSecret = str(env, 'MOCK_WEBHOOK_SECRET', this.isProduction ? undefined : 'dev-mock-webhook-secret');
 
-    this.farmerFeeBps = int(env, 'FARMER_FEE_BPS', 200);
-    this.workerFeeBps = int(env, 'WORKER_FEE_BPS', 200);
+    // 5 % on the farmer, 3 % on the worker: a 4 000 FCFA day costs 4 200 and pays 3 880.
+    // Frozen on each payment at funding; a change only affects missions funded afterwards.
+    this.farmerFeeBps = int(env, 'FARMER_FEE_BPS', 500);
+    this.workerFeeBps = int(env, 'WORKER_FEE_BPS', 300);
     for (const [key, v] of [['FARMER_FEE_BPS', this.farmerFeeBps], ['WORKER_FEE_BPS', this.workerFeeBps]] as const) {
       if (v < 0 || v > 5000) throw new Error(`${key} must be between 0 and 5000`);
     }

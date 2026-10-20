@@ -17,7 +17,7 @@ Ledger rows can't be deleted.
 | Farmer pays (`POST /jobs/:id/funding`) | Payment is pending at the provider | – |
 | Provider confirms (signed webhook) | Work days are created, mission is active | provider clearing → job escrow |
 | Worker checks in (GPS, ≤ 2 km) | Day marked as attended | – |
-| Farmer confirms the day, **or 9:00 next morning** if the worker checked in | Day released | escrow → worker (rate − 2 %) + Nogoman (2 % + 2 %) |
+| Farmer confirms the day, **or 9:00 next morning** if the worker checked in | Day released | escrow → worker (rate − 3 %) + Nogoman (5 % + 3 %) |
 | No check-in and no confirmation | Day refunded | escrow → farmer |
 | Either side disputes | Held until an admin decides | – |
 | Payout batch (every 15 min) | One transfer per user, whatever was released | user balance → provider clearing |
@@ -26,8 +26,12 @@ Ledger rows can't be deleted.
 Task jobs ("à la tâche") have a single unit. It's paid when the farmer confirms, or 48 h
 after the worker marks it done if the farmer doesn't object.
 
-Fees are configurable (`FARMER_FEE_BPS`, `WORKER_FEE_BPS`; 200 = 2 %) and are fixed on each
-day at funding time. Later fee changes never affect missions already paid for.
+Fees are configurable in basis points (100 = 1 %): `FARMER_FEE_BPS` (default 500, 5 %) is added
+to what the farmer pays and `WORKER_FEE_BPS` (default 300, 3 %) is taken from what the worker
+receives, each rounded to the nearest franc. A 4 000 FCFA day costs the farmer **4 200** and
+pays the worker **3 880**; Nogoman keeps 320. The rates are stored on the payment when the farmer
+funds, and the work days are created with them when the provider confirms: a later fee change,
+even one made before the provider's webhook arrives, never affects a mission already paid for.
 
 **The payment provider is a mock for now.** It goes through the same webhook path as a real
 one, so the aggregator (CinetPay / PayDunya / Flutterwave for Orange Money, MTN, Moov, Wave and
