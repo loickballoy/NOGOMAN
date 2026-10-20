@@ -20,14 +20,21 @@ Ledger rows can't be deleted.
 | Farmer confirms the day, **or 9:00 next morning** if the worker checked in | Day released | escrow → worker (rate − 2 %) + Nogoman (2 % + 2 %) |
 | No check-in and no confirmation | Day refunded | escrow → farmer |
 | Either side disputes | Held until an admin decides | – |
-| Payout batch (every 15 min) | One transfer per user, whatever was released | user balance → provider clearing |
+| Daily payout pass (`PAYOUT_HOUR_UTC`, 18:00 UTC by default) | One transfer per user, whatever was released, if the balance reaches `MIN_PAYOUT_XOF` (2 000 FCFA) | user balance → provider clearing |
 | Transfer fails | Money goes back to the balance, retried after 6 h | reversed |
 
 Task jobs ("à la tâche") have a single unit. It's paid when the farmer confirms, or 48 h
 after the worker marks it done if the farmer doesn't object.
 
+Payouts go out once a day to save transfer fees: a smaller balance waits for the next pass. With
+several API instances, only one runs the pass (PostgreSQL advisory lock); `CRON_ENABLED=false`
+turns it off.
+
 Fees are configurable (`FARMER_FEE_BPS`, `WORKER_FEE_BPS`; 200 = 2 %) and are fixed on each
 day at funding time. Later fee changes never affect missions already paid for.
+
+A job can't offer less than `MIN_DAILY_RATE_XOF` (2 000 FCFA by default), per day or per worker
+for a task: `POST /jobs` and `PATCH /jobs/:id` refuse a lower rate with `RATE_TOO_LOW`.
 
 **The payment provider is a mock for now.** It goes through the same webhook path as a real
 one, so the aggregator (CinetPay / PayDunya / Flutterwave for Orange Money, MTN, Moov, Wave and
@@ -71,7 +78,9 @@ per second and cached for a day. For heavier traffic, self-host Nominatim and se
   stolen phone or account can't redirect the money at once. `GET /me` shows when payouts resume
   (`payout.heldUntil`, `null` when there is no hold), with the payout number masked.
 - Payment webhooks must be signed, are applied once, and never activate escrow if the amount
-  reported by the provider differs from what was asked.
+  reported by the provider differs from what was asked. Their signed timestamp must be less than
+  5 minutes old and at most 1 minute ahead (`WEBHOOK_EXPIRED` otherwise). The mock signs
+  `${x-mock-timestamp}.${rawBody}` (Unix seconds) with `MOCK_WEBHOOK_SECRET` in `x-mock-signature`.
 - Admin routes answer only over Tailscale or the LAN (`ADMIN_OVER_INTERNET=false`). Every admin
   call is logged.
 - `DELETE /me` deletes the account: name, number, location, payout number and messages are
@@ -214,11 +223,12 @@ Business codes:
 | Roles and identity | 403 | `WRONG_ROLE`, `KYC_REQUIRED` |
 | Profile | 400 | `ROLE_LOCKED`, `LOCATION_INCOMPLETE`, `ACTIVE_MISSIONS`, `MONEY_PENDING` (account deletion) |
 | Places | 400 | `PLACE_NOT_FOUND` |
-| Jobs | 400 | `START_IN_PAST`, `JOB_LOCKED`, `JOB_HAS_ACTIVE_WORK` |
+| Jobs | 400 | `RATE_TOO_LOW`, `START_IN_PAST`, `JOB_LOCKED`, `JOB_HAS_ACTIVE_WORK` |
 | Hiring | 400 | `PAYOUT_METHOD_REQUIRED`, `OWN_JOB`, `JOB_NOT_OPEN`, `JOB_FULL`, `NOT_PENDING`, `NOT_WITHDRAWABLE` |
 | Hiring | 409 | `ALREADY_APPLIED` |
 | Escrow | 400 | `NOTHING_TO_FUND`, `PHONE_REQUIRED`, `PAYMENT_START_FAILED` |
 | Webhooks | 401 | `BAD_SIGNATURE`, `BAD_PAYLOAD` |
+| Webhooks | 400 | `WEBHOOK_EXPIRED` (signed timestamp more than 5 min old or more than 1 min ahead) |
 | Work | 400 | `NOT_ACTIVE`, `NOT_TODAY`, `TOO_FAR`, `NOT_A_TASK`, `UNIT_CLOSED`, `FUTURE_DAY`, `NOT_DISPUTABLE`, `NOT_DISPUTED`, `ALREADY_ENDED` |
 | Messages | 400 | `EMPTY_MESSAGE`, `CONVERSATION_CLOSED`, `NO_AUDIO`, `BAD_AUDIO`, `BAD_DURATION` |
 | Reviews | 400 | `NOTHING_TO_REVIEW` |

@@ -220,16 +220,16 @@ describe('Nogoman end-to-end flow', () => {
     // A provider reporting less money than asked never activates the escrow.
     const short = JSON.stringify({ eventId: 'evt_short', kind: 'collection', providerRef: pay.body.providerRef, status: 'SUCCEEDED', amountXof: 100 });
     await http().post('/webhooks/payments/mock').set('Content-Type', 'application/json')
-      .set('x-mock-signature', app.get(MockPaymentProvider).sign(short)).send(short).expect(200);
+      .set(app.get(MockPaymentProvider).signedHeaders(short)).send(short).expect(200);
     const stillPending = await http().get(`/payments/${pay.body.id}`).set(auth(farmer.token)).expect(200);
     expect(stillPending.body.status).toBe('PENDING');
     expect(await ledger.balance(Accounts.escrow(jobId).code)).toBe(0);
 
-    const signature = app.get(MockPaymentProvider).sign(body);
+    const signed = app.get(MockPaymentProvider).signedHeaders(body);
     await http().post('/webhooks/payments/mock').set('Content-Type', 'application/json')
-      .set('x-mock-signature', signature).send(body).expect(200);
+      .set(signed).send(body).expect(200);
     const dup = await http().post('/webhooks/payments/mock').set('Content-Type', 'application/json')
-      .set('x-mock-signature', signature).send(body).expect(200);
+      .set(signed).send(body).expect(200);
     expect(dup.body.duplicate).toBe(true);
 
     expect(await ledger.balance(Accounts.escrow(jobId).code)).toBe(13770);
