@@ -32,6 +32,8 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
+      # Fails on any high or critical advisory. How to handle one: README, "Dependency alerts".
+      - run: npm audit --audit-level=high
       - run: npx prisma generate
       - run: npm run typecheck
       - run: npm test

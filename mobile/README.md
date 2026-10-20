@@ -69,6 +69,10 @@ with `npx expo install`. Don't run `npm audit fix --force`: it "fixes" warnings 
 development tools by installing an Expo version from 2021. Those warnings concern the
 build tooling on your computer, not code shipped in the app.
 
+CI fails on high or critical advisories (`npm audit --audit-level=high`), except those listed in
+`audit-exceptions.json` with their justification and expiry date. How to handle an alert:
+"Dependency alerts" in `backend/README.md`.
+
 ## Web build
 
 ```bash

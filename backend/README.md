@@ -106,6 +106,32 @@ TEST_DATABASE_URL=postgresql://user@host:5432/nogoman_test npm run test:e2e
 New e2e files start the API with `bootApp(env)` and reuse the login, hiring and payment steps of
 `test/helpers.ts` (see "Helpers e2e" in the root `CLAUDE.md`).
 
+### Dependency alerts
+
+CI runs `npm audit --audit-level=high` right after `npm ci` (backend and mobile): any high or
+critical advisory fails the build. Dependabot (`.github/dependabot.yml`) opens a weekly PR with
+the grouped minor and patch updates, and one PR per major update.
+
+When the audit fails:
+
+1. **Update.** `npm audit` names the advisory and the dependency chain. Try `npm audit fix`
+   (never `--force`: it jumps major versions blindly), or bump the direct dependency that pulls the
+   vulnerable package. If that dependency has no fixed release yet, pin the patched transitive
+   version under `overrides` in `package.json`, scoped to its parent, once you have checked the
+   parent only uses an API the new version keeps. Then run typecheck, unit, e2e and build. Put the
+   dependency change in its own commit.
+2. **Exception, only if no fixed release exists.** Add the advisory to `audit-exceptions.json`
+   next to `package.json` (see `mobile/audit-exceptions.json`): `id` (GHSA), `package`, `reason`
+   (why there is no fix, why the risk is acceptable: dev tooling only, input under our control…)
+   and `expires` (three months at most). In CI, replace the `npm audit --audit-level=high` step
+   with `node ../.github/scripts/npm-audit.mjs`, which fails the same way except on those
+   advisories. An expired exception fails the build again so it gets re-checked; remove an
+   exception as soon as a fix ships.
+
+Current fixes: `deepmerge-ts` is forced to 8.x under `@prisma/config` (prisma 6.19 pins a
+vulnerable 7.x and only calls `deepmerge()`, unchanged in 8.x). Remove that override when moving
+to a prisma release that ships the fix.
+
 ## Run on the homelab without a domain
 
 ```bash
