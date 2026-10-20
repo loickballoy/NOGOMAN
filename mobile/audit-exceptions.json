@@ -1,0 +1,14 @@
+[
+  {
+    "id": "GHSA-vfj7-8cjw-p6xm",
+    "package": "braces",
+    "expires": "2027-01-20",
+    "reason": "No patched release exists (braces 3.0.3 is the latest and is affected). It is only reached through micromatch in Metro's file watcher (metro-file-map, up to 0.87.1), i.e. the bundler on the developer's machine and in CI. It is not part of the app bundle, and the glob patterns it expands come from our own config, not from users."
+  },
+  {
+    "id": "GHSA-86w9-cpqp-85rv",
+    "package": "node-forge",
+    "expires": "2027-01-20",
+    "reason": "No patched release exists (node-forge 1.4.0 is the latest and is affected). It is only used by the Expo CLI (@expo/cli, @expo/code-signing-certificates) on the developer's machine and in CI, not in the app bundle. We do not use Expo Updates code signing, the feature that verifies signatures with it."
+  }
+]
