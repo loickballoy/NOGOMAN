@@ -2,6 +2,7 @@ import { INestApplication, Logger, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { raw } from 'express';
 import helmet from 'helmet';
+import { ApiExceptionFilter, validationException } from './common/http-exception.filter';
 import { AppConfig } from './config/app-config';
 
 /** Shared HTTP setup for the server and the e2e tests. */
@@ -11,7 +12,11 @@ export function configureApp(app: INestApplication) {
   // fetch the docs assets over HTTPS and the page stays blank. Cloudflare terminates TLS in production.
   app.use(helmet({ contentSecurityPolicy: { directives: { upgradeInsecureRequests: null } } }));
   app.enableCors({ origin: config.corsOrigins.length ? config.corsOrigins : false });
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+  app.useGlobalPipes(new ValidationPipe({
+    whitelist: true, forbidNonWhitelisted: true, transform: true, exceptionFactory: validationException,
+  }));
+  // Every error answers { statusCode, code, message } with a French message (rule 9).
+  app.useGlobalFilters(new ApiExceptionFilter());
   if (config.nodeEnv !== 'test') app.use(requestLogger());
   // Voice notes arrive as the raw audio bytes (Content-Type: audio/...). Expo's fetch
   // handles a plain byte body reliably, unlike multipart file parts.
