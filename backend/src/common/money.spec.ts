@@ -8,6 +8,13 @@ describe('fees', () => {
     expect(workerNet(u)).toBe(4410);
   });
 
+  it('takes 5% from the farmer and 3% from the worker on a 4 000 FCFA day', () => {
+    const u = unitAmounts(4000, 500, 300);
+    expect(u).toEqual({ grossXof: 4000, farmerFeeXof: 200, workerFeeXof: 120 });
+    expect(farmerCost(u)).toBe(4200);
+    expect(workerNet(u)).toBe(3880);
+  });
+
   it('rounds half up to the franc', () => {
     expect(feeFor(125, 200)).toBe(3); // 2.5 -> 3
     expect(feeFor(124, 200)).toBe(2); // 2.48 -> 2
