@@ -1,0 +1,53 @@
+# Weekly dependency updates. Minor and patch bumps come as one grouped PR per directory;
+# major bumps get their own PR so they can be reviewed (and tested) one at a time.
+# Security updates also use these groups. How to handle an audit alert: backend/README.md.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      backend-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: / # Next.js frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      frontend-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /mobile
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      mobile-minor-patch:
+        update-types: [minor, patch]
+    ignore:
+      # An Expo SDK pins the exact react-native and react versions it was built with, plus a
+      # matching range for every expo-* module. A major bump of one of them alone breaks the build:
+      # SDK upgrades are done by hand with `npx expo install expo@^<sdk>` then
+      # `npx expo install --fix`, which moves all of them together.
+      - dependency-name: expo
+        update-types: [version-update:semver-major]
+      # react-native is still 0.x: its breaking releases are minor bumps (0.86 -> 0.87).
+      - dependency-name: react-native
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: react
+        update-types: [version-update:semver-major]
+      - dependency-name: react-dom # always the same version as react
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        update-types: [minor, patch]
