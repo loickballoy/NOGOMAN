@@ -69,6 +69,7 @@ export class AppConfig {
   readonly taskAutoReleaseHours: number;
   readonly checkInRadiusKm: number;
   readonly minPayoutXof: number;
+  readonly payoutHourUtc: number;
   readonly payoutHoldHours: number;
   readonly requireKycToTransact: boolean;
 
@@ -148,7 +149,9 @@ export class AppConfig {
     this.autoReleaseHourUtc = int(env, 'AUTO_RELEASE_HOUR_UTC', 9);
     this.taskAutoReleaseHours = int(env, 'TASK_AUTO_RELEASE_HOURS', 48);
     this.checkInRadiusKm = Number(env.CHECKIN_RADIUS_KM ?? 2);
-    this.minPayoutXof = int(env, 'MIN_PAYOUT_XOF', 100);
+    this.minPayoutXof = int(env, 'MIN_PAYOUT_XOF', 2000);
+    this.payoutHourUtc = int(env, 'PAYOUT_HOUR_UTC', 18);
+    if (this.payoutHourUtc < 0 || this.payoutHourUtc > 23) throw new Error('PAYOUT_HOUR_UTC must be between 0 and 23');
     this.payoutHoldHours = int(env, 'PAYOUT_HOLD_HOURS', 48);
     this.requireKycToTransact = bool(env, 'REQUIRE_KYC_TO_TRANSACT', false);
 
