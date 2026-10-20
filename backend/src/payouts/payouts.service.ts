@@ -1,6 +1,8 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { SchedulerRegistry } from '@nestjs/schedule';
 import { PayoutStatus } from '@prisma/client';
+import { CronJob } from 'cron';
+import { withAdvisoryLock } from '../common/advisory-lock';
 import { AppConfig } from '../config/app-config';
 import { Accounts, LedgerService } from '../ledger/ledger.service';
 import { PAYMENT_PROVIDER, PaymentProvider } from '../payments/providers/payment-provider';
@@ -8,28 +10,44 @@ import { PrismaService } from '../prisma/prisma.service';
 
 const FAILED_PAYOUT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
+/** Name of the daily pass in the SchedulerRegistry. */
+export const PAYOUTS_JOB = 'payouts';
+
 @Injectable()
-export class PayoutsService {
+export class PayoutsService implements OnModuleInit {
   private readonly logger = new Logger(PayoutsService.name);
-  private running = false;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly ledger: LedgerService,
     private readonly config: AppConfig,
+    private readonly scheduler: SchedulerRegistry,
     @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
   ) {}
 
-  @Cron('*/15 * * * *')
+  /**
+   * One payout pass a day at PAYOUT_HOUR_UTC, so each user costs at most one transfer fee a day.
+   * The hour comes from the config, hence a job registered here rather than a static @Cron.
+   */
+  onModuleInit() {
+    const job = CronJob.from({
+      cronTime: `0 ${this.config.payoutHourUtc} * * *`,
+      timeZone: 'UTC',
+      onTick: () => this.scheduled(),
+    });
+    this.scheduler.addCronJob(PAYOUTS_JOB, job);
+    if (this.config.cronEnabled) job.start();
+  }
+
+  /** The daily pass. With several instances, only the one that takes the lock pays (rule 7). */
   async scheduled() {
-    if (!this.config.cronEnabled || this.running) return;
-    this.running = true;
+    if (!this.config.cronEnabled) return;
     try {
-      await this.runBatch();
+      const outcome = await withAdvisoryLock(this.prisma, 'payouts:daily', () => this.runBatch());
+      if (outcome.ran) this.logger.log(`daily payouts: ${outcome.result} started`);
+      else this.logger.log('daily payouts already running on another instance');
     } catch (err) {
       this.logger.error(`payout batch failed: ${String(err)}`);
-    } finally {
-      this.running = false;
     }
   }
 

@@ -64,10 +64,12 @@ export class AppConfig {
 
   readonly farmerFeeBps: number;
   readonly workerFeeBps: number;
+  readonly minDailyRateXof: number;
   readonly autoReleaseHourUtc: number;
   readonly taskAutoReleaseHours: number;
   readonly checkInRadiusKm: number;
   readonly minPayoutXof: number;
+  readonly payoutHourUtc: number;
   readonly payoutHoldHours: number;
   readonly requireKycToTransact: boolean;
 
@@ -143,10 +145,15 @@ export class AppConfig {
     for (const [key, v] of [['FARMER_FEE_BPS', this.farmerFeeBps], ['WORKER_FEE_BPS', this.workerFeeBps]] as const) {
       if (v < 0 || v > 5000) throw new Error(`${key} must be between 0 and 5000`);
     }
+    // Lowest rate a job may offer, per day (DAILY) or per worker for the task (TASK).
+    this.minDailyRateXof = int(env, 'MIN_DAILY_RATE_XOF', 2000);
+    if (this.minDailyRateXof < 0) throw new Error('MIN_DAILY_RATE_XOF must not be negative');
     this.autoReleaseHourUtc = int(env, 'AUTO_RELEASE_HOUR_UTC', 9);
     this.taskAutoReleaseHours = int(env, 'TASK_AUTO_RELEASE_HOURS', 48);
     this.checkInRadiusKm = Number(env.CHECKIN_RADIUS_KM ?? 2);
-    this.minPayoutXof = int(env, 'MIN_PAYOUT_XOF', 100);
+    this.minPayoutXof = int(env, 'MIN_PAYOUT_XOF', 2000);
+    this.payoutHourUtc = int(env, 'PAYOUT_HOUR_UTC', 18);
+    if (this.payoutHourUtc < 0 || this.payoutHourUtc > 23) throw new Error('PAYOUT_HOUR_UTC must be between 0 and 23');
     this.payoutHoldHours = int(env, 'PAYOUT_HOLD_HOURS', 48);
     this.requireKycToTransact = bool(env, 'REQUIRE_KYC_TO_TRANSACT', false);
 

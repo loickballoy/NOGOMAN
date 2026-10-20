@@ -27,10 +27,26 @@ export interface PayoutResult {
   providerRef: string;
 }
 
-/** amountXof: what the provider says actually moved. Real providers must always set it. */
+interface WebhookEventBase {
+  /** The provider's unique id for this event: a second delivery with the same id is ignored. */
+  eventId: string;
+  providerRef: string;
+  status: 'SUCCEEDED' | 'FAILED';
+  reason?: string;
+  /** What the provider says actually moved. Real providers must always set it. */
+  amountXof?: number;
+  /**
+   * When the provider emitted the event. Adapters MUST take it from a value covered by the
+   * webhook signature (e.g. a signed timestamp header), never from an unsigned header or field:
+   * otherwise a captured webhook could be replayed with a fresh date. PaymentsService rejects the
+   * event with WEBHOOK_EXPIRED when it is more than 5 minutes old or more than 1 minute ahead.
+   */
+  occurredAt: Date;
+}
+
 export type WebhookEvent =
-  | { eventId: string; kind: 'collection'; providerRef: string; status: 'SUCCEEDED' | 'FAILED'; reason?: string; amountXof?: number }
-  | { eventId: string; kind: 'payout'; providerRef: string; status: 'SUCCEEDED' | 'FAILED'; reason?: string; amountXof?: number };
+  | (WebhookEventBase & { kind: 'collection' })
+  | (WebhookEventBase & { kind: 'payout' });
 
 /**
  * A licensed aggregator (CinetPay, PayDunya, Flutterwave…) that holds the escrowed funds,
@@ -40,6 +56,9 @@ export interface PaymentProvider {
   readonly name: string;
   createCollection(req: CollectionRequest): Promise<CollectionResult>;
   createPayout(req: PayoutRequest): Promise<PayoutResult>;
-  /** Verifies the signature and normalises the payload. Throws if the signature is invalid. */
+  /**
+   * Verifies the signature and normalises the payload, including the signed `occurredAt`.
+   * Throws BAD_SIGNATURE when the signature or its signed timestamp is missing or invalid.
+   */
   parseWebhook(headers: Record<string, string | string[] | undefined>, rawBody: Buffer): WebhookEvent;
 }
