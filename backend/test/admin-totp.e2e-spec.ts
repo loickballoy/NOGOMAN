@@ -12,9 +12,13 @@ import { auth, bootApp, phones, TestApp, TestUser } from './helpers';
  *   POST /auth/totp/confirm  admin bearer, { code }         -> 200 { backupCodes: string[] } (once)
  *   POST /auth/totp/verify   admin bearer, { code } or { backupCode }
  *                                                           -> 200 { accessToken } with `mfa: true`
- *   wrong / reused code                                     -> 400 TOTP_INVALID
+ *   wrong / reused / out-of-window code                     -> 400 TOTP_INVALID
+ *   after TOTP_MAX_ATTEMPTS wrong codes in a row            -> 429 TOTP_LOCKED, even with a good code
  *   /admin/* with a token without `mfa`                     -> 401 TOTP_REQUIRED
  *   non-admin on /auth/totp/*                               -> 403 WRONG_ROLE
+ *
+ * Clock tolerance: ±1 step (codes of steps s-1, s, s+1 are accepted; s±3 is refused).
+ * The TOTP secret is encrypted at rest with TOTP_ENCRYPTION_KEY; backup codes are hashed.
  *
  * Never send cf-connecting-ip here: admin routes answer 404 to it (AdminAccessGuard).
  */
@@ -56,6 +60,28 @@ function hotp(key: Buffer, counter: number): string {
 const currentStep = () => Math.floor(Date.now() / 1000 / STEP_SEC);
 const totp = (secret: string, step = currentStep()) => hotp(base32Decode(secret), step);
 
+/**
+ * The current step, after waiting out the last 3 s of a step if needed, so that the step the
+ * test computes is still the server's step when the request lands (no flaky boundary crossing).
+ */
+async function stableStep(): Promise<number> {
+  const intoStep = (Date.now() / 1000) % STEP_SEC;
+  if (intoStep > STEP_SEC - 3) await new Promise((r) => setTimeout(r, (STEP_SEC - intoStep + 0.2) * 1000));
+  return currentStep();
+}
+
+/** A 6-digit code that matches none of the steps around `step` (certainly wrong). */
+function wrongCode(secret: string, step: number): string {
+  const valid = new Set([-2, -1, 0, 1, 2].map((d) => totp(secret, step + d)));
+  let n = Number(totp(secret, step));
+  let code: string;
+  do {
+    n = (n + 1) % 1_000_000;
+    code = String(n).padStart(6, '0');
+  } while (valid.has(code));
+  return code;
+}
+
 // --- Helpers ---------------------------------------------------------------------------------
 
 function expectApiError(res: Response, status: number, code: string) {
@@ -70,8 +96,15 @@ const jwtPayload = (token: string) => JSON.parse(Buffer.from(token.split('.')[1]
 const e164 = (local: string) => `+225${local.replace(/\D/g, '')}`;
 
 // One fresh admin per test: their numbers must be in ADMIN_PHONES before they first log in.
-const ADMIN_COUNT = 5;
+const ADMIN_COUNT = 12;
 const adminNumbers = Array.from({ length: ADMIN_COUNT }, () => phone());
+
+// Wrong codes in a row before verify locks. Set low here so the test proves the variable is read
+// (the default is expected to be higher).
+const TOTP_MAX_ATTEMPTS = 3;
+
+// Fictitious 32-byte key, hex. Test-only value: never use it anywhere else.
+const TOTP_ENCRYPTION_KEY = 'a3'.repeat(32);
 
 describe('Admin TOTP (issue #23)', () => {
   let t: TestApp;
@@ -82,18 +115,47 @@ describe('Admin TOTP (issue #23)', () => {
     return t.login(adminNumbers[nextAdmin++]);
   };
 
-  /** Enrols `admin` and confirms with the current code. `step` is the step confirm used. */
-  const enrol = async (admin: TestUser) => {
+  /**
+   * Enrols `admin` and confirms with the code of step `now + confirmOffset` (0 by default).
+   * `step` is the server's step at confirm time.
+   */
+  const enrol = async (admin: TestUser, confirmOffset = 0) => {
     const enrolled = await t.http().post('/auth/totp/enroll').set(auth(admin.token)).send({}).expect(200);
     const secret: string = enrolled.body.secret;
-    const step = currentStep();
+    const step = await stableStep();
     const confirmed = await t.http().post('/auth/totp/confirm').set(auth(admin.token))
-      .send({ code: totp(secret, step) }).expect(200);
+      .send({ code: totp(secret, step + confirmOffset) }).expect(200);
     return { secret, step, backupCodes: confirmed.body.backupCodes as string[], enrolled: enrolled.body };
   };
 
+  const verify = (admin: TestUser, body: Record<string, string>) =>
+    t.http().post('/auth/totp/verify').set(auth(admin.token)).send(body);
+
+  /**
+   * How many rows of the whole public schema contain `needle` (case-insensitive). Column-agnostic:
+   * each row is cast to text (`row::text`), so whatever the implementation names its table or
+   * column, a plaintext value would show up.
+   */
+  const occurrences = async (needle: string) => {
+    const prisma = t.app.get(PrismaService);
+    const tables = await prisma.$queryRaw<{ tablename: string }[]>`
+      SELECT tablename FROM pg_tables WHERE schemaname = 'public'`;
+    const pattern = `%${needle.replace(/[\\%_]/g, '\\$&')}%`;
+    let total = 0;
+    for (const { tablename } of tables) {
+      const [{ n }] = await prisma.$queryRawUnsafe<{ n: number }[]>(
+        `SELECT count(*)::int AS n FROM "${tablename.replace(/"/g, '""')}" AS r WHERE r::text ILIKE $1`, pattern);
+      total += n;
+    }
+    return total;
+  };
+
   beforeAll(async () => {
-    t = await bootApp({ ADMIN_PHONES: ['+2250101010101', ...adminNumbers.map(e164)].join(',') }, { phones: phone });
+    t = await bootApp({
+      ADMIN_PHONES: ['+2250101010101', ...adminNumbers.map(e164)].join(','),
+      TOTP_MAX_ATTEMPTS: String(TOTP_MAX_ATTEMPTS),
+      TOTP_ENCRYPTION_KEY,
+    }, { phones: phone });
   });
 
   afterAll(async () => {
@@ -165,22 +227,6 @@ describe('Admin TOTP (issue #23)', () => {
   it('does not store backup codes in clear text', async () => {
     const admin = await newAdmin();
     const { backupCodes } = await enrol(admin);
-    const prisma = t.app.get(PrismaService);
-
-    // Column-agnostic: each row of every table is cast to text (`row::text`), so whatever the
-    // implementation names its table or column, a plaintext code would show up in the search.
-    const tables = await prisma.$queryRaw<{ tablename: string }[]>`
-      SELECT tablename FROM pg_tables WHERE schemaname = 'public'`;
-    const occurrences = async (needle: string) => {
-      const pattern = `%${needle.replace(/[\\%_]/g, '\\$&')}%`;
-      let total = 0;
-      for (const { tablename } of tables) {
-        const [{ n }] = await prisma.$queryRawUnsafe<{ n: number }[]>(
-          `SELECT count(*)::int AS n FROM "${tablename.replace(/"/g, '""')}" AS r WHERE r::text ILIKE $1`, pattern);
-        total += n;
-      }
-      return total;
-    };
 
     // The search does find what is stored: this admin's id is in at least their own user row.
     expect(await occurrences(admin.id)).toBeGreaterThan(0);
@@ -190,6 +236,63 @@ describe('Admin TOTP (issue #23)', () => {
       const bare = code.replace(/[^0-9a-z]/gi, ''); // e.g. "ABCD-EFGH" stored as "abcdefgh"
       if (bare !== code) expect(await occurrences(bare)).toBe(0);
     }
+  });
+
+  it('does not store the TOTP secret in clear text (encrypted at rest)', async () => {
+    const admin = await newAdmin();
+    const { secret } = await enrol(admin);
+    const key = base32Decode(secret);
+
+    expect(await occurrences(admin.id)).toBeGreaterThan(0); // the search does read the database
+    // Neither the base32 form returned by enroll, nor the raw key in hex or base64.
+    expect(await occurrences(secret.replace(/=+$/, ''))).toBe(0);
+    expect(await occurrences(key.toString('hex'))).toBe(0);
+    expect(await occurrences(key.toString('base64').replace(/=+$/, ''))).toBe(0);
+  });
+
+  it('accepts codes one step off (s-1, s+1) and refuses codes three steps off (s±3): 400 TOTP_INVALID', async () => {
+    const admin = await newAdmin();
+    // s-1 is checked on confirm: on verify, it would follow the code confirm consumed, and an
+    // implementation that only accepts steps after the last one used may rightly refuse it.
+    const { secret, step } = await enrol(admin, -1);
+
+    const next = await verify(admin, { code: totp(secret, step + 1) }).expect(200);
+    expect(jwtPayload(next.body.accessToken).mfa).toBe(true);
+
+    expectApiError(await verify(admin, { code: totp(secret, step + 3) }), 400, 'TOTP_INVALID');
+    expectApiError(await verify(admin, { code: totp(secret, step - 3) }), 400, 'TOTP_INVALID');
+  });
+
+  it('refuses a TOTP code already accepted by verify: 400 TOTP_INVALID', async () => {
+    const admin = await newAdmin();
+    const { secret, step } = await enrol(admin);
+    const code = totp(secret, step + 1);
+
+    await verify(admin, { code }).expect(200);
+    expectApiError(await verify(admin, { code }), 400, 'TOTP_INVALID');
+  });
+
+  it(`locks verify after TOTP_MAX_ATTEMPTS (${TOTP_MAX_ATTEMPTS}) wrong codes in a row: 429 TOTP_LOCKED, even with a good code`, async () => {
+    // One wrong code short of the limit: a good code still opens.
+    const below = await newAdmin();
+    const b = await enrol(below);
+    for (let i = 0; i < TOTP_MAX_ATTEMPTS - 1; i++) {
+      expectApiError(await verify(below, { code: wrongCode(b.secret, b.step) }), 400, 'TOTP_INVALID');
+    }
+    await verify(below, { code: totp(b.secret, b.step + 1) }).expect(200);
+
+    // At the limit: the good code is refused.
+    const locked = await newAdmin();
+    const l = await enrol(locked);
+    for (let i = 0; i < TOTP_MAX_ATTEMPTS - 1; i++) {
+      expectApiError(await verify(locked, { code: wrongCode(l.secret, l.step) }), 400, 'TOTP_INVALID');
+    }
+    // The last wrong code may already answer "locked"; either way it is refused.
+    const last = await verify(locked, { code: wrongCode(l.secret, l.step) });
+    expect([400, 429]).toContain(last.status);
+    expect(['TOTP_INVALID', 'TOTP_LOCKED']).toContain(last.body.code);
+
+    expectApiError(await verify(locked, { code: totp(l.secret, l.step + 1) }), 429, 'TOTP_LOCKED');
   });
 
   it('does not let a non-admin enrol: 403 WRONG_ROLE', async () => {
