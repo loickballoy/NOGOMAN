@@ -4,10 +4,12 @@
  *
  * Every assertion is relative to the users created here (their payouts, their ledger balance):
  * the database is shared with the other e2e files.
- * Not covered here: the `payouts` job (fireOnTick, #18) and POST /me/payouts/instant (#21).
+ * Not covered here: POST /me/payouts/instant (#21).
  */
 import { randomUUID } from 'crypto';
+import { SchedulerRegistry } from '@nestjs/schedule';
 import { MockPaymentProvider } from '../src/payments/providers/mock-payment.provider';
+import { PayoutsService } from '../src/payouts/payouts.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { auth, bootApp, phones, TestApp, TestUser } from './helpers';
 
@@ -164,6 +166,28 @@ describe('emergency stop of payouts (PAYOUTS_ENABLED)', () => {
     const held = await payoutsOf(off, w3);
     expect(held.payouts).toHaveLength(1);
     expect(held.balanceXof).toBe(5000);
+    await expectBalancedLedger(off, admin);
+  });
+
+  it('the daily payouts job pays nobody while PAYOUTS_ENABLED=false', async () => {
+    const off = await boot({ ...OFF, CRON_ENABLED: 'true' });
+    const w4 = await off.worker();
+    await off.paidTask(farmer, w4, 4000);
+    const before = await payoutsOf(off, w4);
+    expect(before).toEqual({ balanceXof: 4000, payouts: [] });
+
+    // fireOnTick() does not wait for the async pass: watch it start, then wait for it to end.
+    const batch = jest.spyOn(off.app.get(PayoutsService), 'runBatch');
+    await off.app.get(SchedulerRegistry).getCronJob('payouts').fireOnTick();
+    for (let i = 0; i < 50 && batch.mock.results.length === 0; i++) await new Promise((r) => setTimeout(r, 100));
+    expect(batch).toHaveBeenCalled();
+    await batch.mock.results[0].value;
+    await new Promise((r) => setTimeout(r, 300));
+    batch.mockRestore();
+
+    const after = await payoutsOf(off, w4);
+    expect(after.payouts).toEqual([]);
+    expect(after.balanceXof).toBe(before.balanceXof);
     await expectBalancedLedger(off, admin);
   });
 });
