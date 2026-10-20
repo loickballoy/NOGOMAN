@@ -90,7 +90,7 @@ describe('fees frozen at funding (#16)', () => {
       status: 'SUCCEEDED', amountXof: pay.body.amountXof,
     });
     await b.http().post('/webhooks/payments/mock').set('Content-Type', 'application/json')
-      .set('x-mock-signature', b.app.get(MockPaymentProvider).sign(body)).send(body).expect(200);
+      .set(b.app.get(MockPaymentProvider).signedHeaders(body)).send(body).expect(200);
     const settled = await b.http().get(`/payments/${pay.body.id}`).set(auth(farmer.token)).expect(200);
     expect(settled.body.status).toBe('SUCCEEDED');
 
