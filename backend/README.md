@@ -20,11 +20,15 @@ Ledger rows can't be deleted.
 | Farmer confirms the day, **or 9:00 next morning** if the worker checked in | Day released | escrow → worker (rate − 2 %) + Nogoman (2 % + 2 %) |
 | No check-in and no confirmation | Day refunded | escrow → farmer |
 | Either side disputes | Held until an admin decides | – |
-| Payout batch (every 15 min) | One transfer per user, whatever was released | user balance → provider clearing |
+| Daily payout pass (`PAYOUT_HOUR_UTC`, 18:00 UTC by default) | One transfer per user, whatever was released, if the balance reaches `MIN_PAYOUT_XOF` (2 000 FCFA) | user balance → provider clearing |
 | Transfer fails | Money goes back to the balance, retried after 6 h | reversed |
 
 Task jobs ("à la tâche") have a single unit. It's paid when the farmer confirms, or 48 h
 after the worker marks it done if the farmer doesn't object.
+
+Payouts go out once a day to save transfer fees: a smaller balance waits for the next pass. With
+several API instances, only one runs the pass (PostgreSQL advisory lock); `CRON_ENABLED=false`
+turns it off.
 
 Fees are configurable (`FARMER_FEE_BPS`, `WORKER_FEE_BPS`; 200 = 2 %) and are fixed on each
 day at funding time. Later fee changes never affect missions already paid for.
