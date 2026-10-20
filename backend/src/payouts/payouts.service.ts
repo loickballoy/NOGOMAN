@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PayoutStatus } from '@prisma/client';
 import { AppConfig } from '../config/app-config';
@@ -7,6 +7,12 @@ import { PAYMENT_PROVIDER, PaymentProvider } from '../payments/providers/payment
 import { PrismaService } from '../prisma/prisma.service';
 
 const FAILED_PAYOUT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+
+/** Why a payout is refused while PAYOUTS_ENABLED=false (503 PAYOUTS_SUSPENDED for the API). */
+export const payoutsSuspended = () => new ServiceUnavailableException({
+  code: 'PAYOUTS_SUSPENDED',
+  message: 'Les versements sont suspendus pour le moment. Votre solde est conservé.',
+});
 
 @Injectable()
 export class PayoutsService {
@@ -38,6 +44,7 @@ export class PayoutsService {
    * so several days or jobs released together cost a single provider fee.
    */
   async runBatch(): Promise<number> {
+    if (!this.config.payoutsEnabled) return 0;
     const rows = await this.prisma.$queryRaw<{ userId: string; balance: bigint }[]>`
       SELECT a."userId", SUM(p."amountXof")::bigint AS balance
       FROM "LedgerAccount" a JOIN "Posting" p ON p."accountId" = a."id"
@@ -52,9 +59,11 @@ export class PayoutsService {
     return started;
   }
 
+  /** Throws `payoutsSuspended()` while payouts are stopped, before anything is written. */
   async payUser(userId: string): Promise<boolean> {
     const payout = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE`;
+      if (!this.config.payoutsEnabled) throw payoutsSuspended();
       const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
       if (!user.payoutOperator || !user.payoutPhone || user.disabledAt) return null;
       if (user.payoutHoldUntil && user.payoutHoldUntil > new Date()) return null;
