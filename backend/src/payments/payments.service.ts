@@ -106,7 +106,16 @@ export class PaymentsService {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') return { duplicate: true };
       throw err;
     }
-    await this.applyEvent(event);
+    try {
+      await this.applyEvent(event);
+    } catch (err) {
+      // Not applied (DB outage, ledger error…): forget the event so the provider's retry is
+      // processed instead of being answered as a duplicate, which would lose the credit for good.
+      await this.prisma.webhookEvent
+        .delete({ where: { provider_eventId: { provider: providerName, eventId: event.eventId } } })
+        .catch((e) => this.logger.error(`webhook ${event.eventId}: could not release after failure: ${String(e)}`));
+      throw err;
+    }
     return { ok: true };
   }
 
