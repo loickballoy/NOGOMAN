@@ -70,6 +70,7 @@ export class AppConfig {
   readonly checkInRadiusKm: number;
   readonly minPayoutXof: number;
   readonly payoutHourUtc: number;
+  readonly payoutsEnabled: boolean;
   /** How long payouts wait after an existing payout number or operator is replaced. */
   readonly payoutCooldownHours: number;
   readonly requireKycToTransact: boolean;
@@ -155,6 +156,8 @@ export class AppConfig {
     this.minPayoutXof = int(env, 'MIN_PAYOUT_XOF', 2000);
     this.payoutHourUtc = int(env, 'PAYOUT_HOUR_UTC', 18);
     if (this.payoutHourUtc < 0 || this.payoutHourUtc > 23) throw new Error('PAYOUT_HOUR_UTC must be between 0 and 23');
+    // Emergency stop: false suspends every payout; balances stay on the ledger untouched.
+    this.payoutsEnabled = bool(env, 'PAYOUTS_ENABLED', true);
     // PAYOUT_HOLD_HOURS is the old name of PAYOUT_COOLDOWN_HOURS: still read, with a warning.
     const legacyHold = env.PAYOUT_HOLD_HOURS !== undefined && env.PAYOUT_HOLD_HOURS !== '';
     const cooldownSet = env.PAYOUT_COOLDOWN_HOURS !== undefined && env.PAYOUT_COOLDOWN_HOURS !== '';

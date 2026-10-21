@@ -44,6 +44,20 @@ for a task: `POST /jobs` and `PATCH /jobs/:id` refuse a lower rate with `RATE_TO
 one, so the aggregator (CinetPay / PayDunya / Flutterwave for Orange Money, MTN, Moov, Wave and
 cards) can be plugged in behind `PaymentProvider` without touching the escrow logic.
 
+## Coupure d'urgence
+
+If something goes wrong with payouts (provider incident, suspected fraud), set
+`PAYOUTS_ENABLED=false` and restart the API. Then:
+
+- the daily payout pass and `POST /admin/payouts/run` pay nobody;
+- a payout requested by a user (instant payout, coming next) is refused with 503 `PAYOUTS_SUSPENDED`;
+- nothing is written to the ledger: every balance stays as it is, to the franc;
+- payouts already sent to the provider are still settled by their webhooks. A failed one puts
+  the money back on the user's balance.
+
+Set it back to `true` and restart: the next pass pays each user once, for the whole balance.
+The back office will later add a switch stored in the database on top of this variable.
+
 ## Messages
 
 A worker and a farmer get one thread per application, from the moment the worker applies.
@@ -231,6 +245,7 @@ Business codes:
 | Hiring | 400 | `PAYOUT_METHOD_REQUIRED`, `OWN_JOB`, `JOB_NOT_OPEN`, `JOB_FULL`, `NOT_PENDING`, `NOT_WITHDRAWABLE` |
 | Hiring | 409 | `ALREADY_APPLIED` |
 | Escrow | 400 | `NOTHING_TO_FUND`, `PHONE_REQUIRED`, `PAYMENT_START_FAILED` |
+| Payouts | 503 | `PAYOUTS_SUSPENDED` (emergency stop, see above) |
 | Webhooks | 401 | `BAD_SIGNATURE`, `BAD_PAYLOAD` |
 | Webhooks | 400 | `WEBHOOK_EXPIRED` (signed timestamp more than 5 min old or more than 1 min ahead) |
 | Work | 400 | `NOT_ACTIVE`, `NOT_TODAY`, `TOO_FAR`, `NOT_A_TASK`, `UNIT_CLOSED`, `FUTURE_DAY`, `NOT_DISPUTABLE`, `NOT_DISPUTED`, `ALREADY_ENDED` |
