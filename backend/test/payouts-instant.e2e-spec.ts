@@ -85,7 +85,7 @@ describe('Instant payout POST /me/payouts/instant (#21)', () => {
   /** Sends the mock provider's signed payout webhook, as the provider would. */
   const payoutWebhook = (on: TestApp, body: string) =>
     on.http().post('/webhooks/payments/mock').set('Content-Type', 'application/json')
-      .set('x-mock-signature', on.app.get(MockPaymentProvider).sign(body)).send(body);
+      .set(on.app.get(MockPaymentProvider).signedHeaders(body)).send(body);
 
   beforeAll(async () => {
     t = await boot();
