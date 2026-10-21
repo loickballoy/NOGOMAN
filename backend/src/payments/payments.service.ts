@@ -56,6 +56,8 @@ export class PaymentsService {
     if (dto.operator && !phone) {
       throw new BadRequestException({ code: 'PHONE_REQUIRED', message: 'Indiquez le numéro mobile money qui paie.' });
     }
+    // Rule 3: the rates quoted now are the ones the units will be created with on settlement.
+    const { farmerFeeBps, workerFeeBps } = this.config;
     const units = engagements.flatMap((e) => planUnits(job, e, this.config));
     const payment = await this.prisma.payment.create({
       data: {
@@ -66,6 +68,8 @@ export class PaymentsService {
         phone,
         amountXof: unitsTotal(units),
         feeXof: unitsFees(units),
+        farmerFeeBps,
+        workerFeeBps,
         engagements: { connect: engagements.map((e) => ({ id: e.id })) },
       },
     });
@@ -160,6 +164,13 @@ export class PaymentsService {
         include: { job: true, engagements: true },
       });
       const job = payment.job;
+      // Fees frozen at funding (rule 3), not the rates in force when the webhook arrives.
+      // Payments made before the rates were stored fall back to the current configuration.
+      const fees = {
+        farmerFeeBps: payment.farmerFeeBps ?? this.config.farmerFeeBps,
+        workerFeeBps: payment.workerFeeBps ?? this.config.workerFeeBps,
+        autoReleaseHourUtc: this.config.autoReleaseHourUtc,
+      };
       await this.ledger.post(tx, 'FUNDING', `funding:${payment.id}`, [
         { account: Accounts.clearing(payment.provider), amountXof: -payment.amountXof },
         { account: Accounts.escrow(job.id), amountXof: payment.amountXof },
@@ -168,7 +179,7 @@ export class PaymentsService {
       let allocated = 0;
       for (const engagement of payment.engagements) {
         if (engagement.status !== EngagementStatus.AWAITING_FUNDING) continue;
-        const units = planUnits(job, engagement, this.config);
+        const units = planUnits(job, engagement, fees);
         allocated += unitsTotal(units);
         await tx.workUnit.createMany({ data: units.map((u) => ({ ...u, engagementId: engagement.id })) });
         await tx.engagement.update({ where: { id: engagement.id }, data: { status: EngagementStatus.ACTIVE } });

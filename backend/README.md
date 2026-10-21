@@ -17,7 +17,7 @@ Ledger rows can't be deleted.
 | Farmer pays (`POST /jobs/:id/funding`) | Payment is pending at the provider | – |
 | Provider confirms (signed webhook) | Work days are created, mission is active | provider clearing → job escrow |
 | Worker checks in (GPS, ≤ 2 km) | Day marked as attended | – |
-| Farmer confirms the day, **or 9:00 next morning** if the worker checked in | Day released | escrow → worker (rate − 2 %) + Nogoman (2 % + 2 %) |
+| Farmer confirms the day, **or 9:00 next morning** if the worker checked in | Day released | escrow → worker (rate − 3 %) + Nogoman (5 % + 3 %) |
 | No check-in and no confirmation | Day refunded | escrow → farmer |
 | Either side disputes | Held until an admin decides | – |
 | Daily payout pass (`PAYOUT_HOUR_UTC`, 18:00 UTC by default) | One transfer per user, whatever was released, if the balance reaches `MIN_PAYOUT_XOF` (2 000 FCFA) | user balance → provider clearing |
@@ -30,8 +30,12 @@ Payouts go out once a day to save transfer fees: a smaller balance waits for the
 several API instances, only one runs the pass (PostgreSQL advisory lock); `CRON_ENABLED=false`
 turns it off.
 
-Fees are configurable (`FARMER_FEE_BPS`, `WORKER_FEE_BPS`; 200 = 2 %) and are fixed on each
-day at funding time. Later fee changes never affect missions already paid for.
+Fees are configurable in basis points (100 = 1 %): `FARMER_FEE_BPS` (default 500, 5 %) is added
+to what the farmer pays and `WORKER_FEE_BPS` (default 300, 3 %) is taken from what the worker
+receives, each rounded to the nearest franc. A 4 000 FCFA day costs the farmer **4 200** and
+pays the worker **3 880**; Nogoman keeps 320. The rates are stored on the payment when the farmer
+funds, and the work days are created with them when the provider confirms: a later fee change,
+even one made before the provider's webhook arrives, never affects a mission already paid for.
 
 A job can't offer less than `MIN_DAILY_RATE_XOF` (2 000 FCFA by default), per day or per worker
 for a task: `POST /jobs` and `PATCH /jobs/:id` refuse a lower rate with `RATE_TOO_LOW`.
@@ -87,8 +91,10 @@ per second and cached for a day. For heavier traffic, self-host Nominatim and se
 - Refresh tokens rotate on every use. Reusing an old token logs out every session of that user.
 - Login codes are capped per number (`OTP_MAX_PER_DAY`), per IP, and for everyone together
   (`SMS_DAILY_LIMIT`, against bots burning the SMS budget). Codes are deleted after 7 days.
-- Changing an existing payout number holds payouts for `PAYOUT_HOLD_HOURS` (48 h) and warns
-  the account owner by SMS, so a stolen phone or account can't redirect the money at once.
+- Replacing an existing payout number or operator holds payouts for `PAYOUT_COOLDOWN_HOURS` (72 h;
+  `PAYOUT_HOLD_HOURS` is still read as the old name) and warns the account owner by SMS, so a
+  stolen phone or account can't redirect the money at once. `GET /me` shows when payouts resume
+  (`payout.heldUntil`, `null` when there is no hold), with the payout number masked.
 - Payment webhooks must be signed, are applied once, and never activate escrow if the amount
   reported by the provider differs from what was asked. Their signed timestamp must be less than
   5 minutes old and at most 1 minute ahead (`WEBHOOK_EXPIRED` otherwise). The mock signs

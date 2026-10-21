@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 
 type Env = Record<string, string | undefined>;
 
@@ -71,7 +71,8 @@ export class AppConfig {
   readonly minPayoutXof: number;
   readonly payoutHourUtc: number;
   readonly payoutsEnabled: boolean;
-  readonly payoutHoldHours: number;
+  /** How long payouts wait after an existing payout number or operator is replaced. */
+  readonly payoutCooldownHours: number;
   readonly requireKycToTransact: boolean;
 
   readonly uploadDir: string;
@@ -139,8 +140,10 @@ export class AppConfig {
     this.paymentProvider = payment;
     this.mockWebhookSecret = str(env, 'MOCK_WEBHOOK_SECRET', this.isProduction ? undefined : 'dev-mock-webhook-secret');
 
-    this.farmerFeeBps = int(env, 'FARMER_FEE_BPS', 200);
-    this.workerFeeBps = int(env, 'WORKER_FEE_BPS', 200);
+    // 5 % on the farmer, 3 % on the worker: a 4 000 FCFA day costs 4 200 and pays 3 880.
+    // Frozen on each payment at funding; a change only affects missions funded afterwards.
+    this.farmerFeeBps = int(env, 'FARMER_FEE_BPS', 500);
+    this.workerFeeBps = int(env, 'WORKER_FEE_BPS', 300);
     for (const [key, v] of [['FARMER_FEE_BPS', this.farmerFeeBps], ['WORKER_FEE_BPS', this.workerFeeBps]] as const) {
       if (v < 0 || v > 5000) throw new Error(`${key} must be between 0 and 5000`);
     }
@@ -155,7 +158,18 @@ export class AppConfig {
     if (this.payoutHourUtc < 0 || this.payoutHourUtc > 23) throw new Error('PAYOUT_HOUR_UTC must be between 0 and 23');
     // Emergency stop: false suspends every payout; balances stay on the ledger untouched.
     this.payoutsEnabled = bool(env, 'PAYOUTS_ENABLED', true);
-    this.payoutHoldHours = int(env, 'PAYOUT_HOLD_HOURS', 48);
+    // PAYOUT_HOLD_HOURS is the old name of PAYOUT_COOLDOWN_HOURS: still read, with a warning.
+    const legacyHold = env.PAYOUT_HOLD_HOURS !== undefined && env.PAYOUT_HOLD_HOURS !== '';
+    const cooldownSet = env.PAYOUT_COOLDOWN_HOURS !== undefined && env.PAYOUT_COOLDOWN_HOURS !== '';
+    this.payoutCooldownHours = cooldownSet || !legacyHold
+      ? int(env, 'PAYOUT_COOLDOWN_HOURS', 72)
+      : int(env, 'PAYOUT_HOLD_HOURS', 72);
+    if (this.payoutCooldownHours < 0) throw new Error('PAYOUT_COOLDOWN_HOURS must be 0 or more');
+    if (legacyHold) {
+      new Logger(AppConfig.name).warn(cooldownSet
+        ? 'PAYOUT_HOLD_HOURS is ignored: PAYOUT_COOLDOWN_HOURS is set. Remove PAYOUT_HOLD_HOURS.'
+        : 'PAYOUT_HOLD_HOURS is deprecated: rename it to PAYOUT_COOLDOWN_HOURS.');
+    }
     this.requireKycToTransact = bool(env, 'REQUIRE_KYC_TO_TRANSACT', false);
 
     this.uploadDir = env.UPLOAD_DIR ?? './uploads';

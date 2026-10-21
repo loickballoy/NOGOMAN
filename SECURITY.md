@@ -15,7 +15,8 @@ pilot, and the rules the coming payment and ID integrations must follow.
   masked (numbers, emails, links, other apps). Farm addresses stay hidden until a worker is hired.
 - **Money.** A double-entry ledger, balanced and append-only, is enforced by the database.
   Webhooks must be signed, are applied once, are refused when their signed timestamp is more than
-  5 minutes old, and never fund escrow when the provider's amount differs. Changing a payout number holds payouts for 48 h and warns the owner by SMS.
+  5 minutes old, and never fund escrow when the provider's amount differs. Changing a payout
+  number holds payouts for 72 h and warns the owner by SMS.
 - **Admin.** Admin routes answer only over Tailscale or the LAN, never through Cloudflare, and
   every admin call is logged.
 - **Deletion.** In-app account deletion (required by the App Store) erases name, number,
