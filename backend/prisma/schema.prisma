@@ -375,6 +375,8 @@ model WebhookEvent {
   eventId   String
   payload   Json
   createdAt DateTime @default(now())
+  /// Null while the event is being applied (or if the process died): only processed events are duplicates.
+  processedAt DateTime?
 
   @@unique([provider, eventId])
 }

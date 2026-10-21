@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { LedgerService } from '../src/ledger/ledger.service';
+import { PrismaService } from '../src/prisma/prisma.service';
 import { MockPaymentProvider } from '../src/payments/providers/mock-payment.provider';
 import { auth, bootApp, phones, TestApp } from './helpers';
 
@@ -24,7 +25,7 @@ describe('Webhook retried after a failed application (#86)', () => {
       eventId, kind: 'collection', providerRef: pay.body.providerRef, status: 'SUCCEEDED', amountXof: pay.body.amountXof,
     });
     const send = () => t.http().post('/webhooks/payments/mock').set('Content-Type', 'application/json')
-      .set('x-mock-signature', t.app.get(MockPaymentProvider).sign(body)).send(body);
+      .set(t.app.get(MockPaymentProvider).signedHeaders(body)).send(body);
 
     const ledger = t.app.get(LedgerService);
     jest.spyOn(ledger, 'post').mockImplementationOnce(async () => {
@@ -44,5 +45,33 @@ describe('Webhook retried after a failed application (#86)', () => {
     // And a further replay is still a duplicate: never credited twice.
     const again = await send().expect(200);
     expect(again.body).toEqual({ duplicate: true });
+  });
+
+  it('answers 409 while an unprocessed record is fresh, and takes it over once stale (release failed)', async () => {
+    const { farmer } = await t.farmerAndWorker();
+    const job = await t.postJob(farmer);
+    await t.hiredOn(job);
+    const pay = await t.http().post(`/jobs/${job.id}/funding`).set(auth(farmer.token)).send({}).expect(201);
+    const eventId = `e2e_${randomUUID()}`;
+    const body = JSON.stringify({
+      eventId, kind: 'collection', providerRef: pay.body.providerRef, status: 'SUCCEEDED', amountXof: pay.body.amountXof,
+    });
+    const send = () => t.http().post('/webhooks/payments/mock').set('Content-Type', 'application/json')
+      .set(t.app.get(MockPaymentProvider).signedHeaders(body)).send(body);
+    // A record left behind (process killed, or the release itself failed).
+    const prisma = t.app.get(PrismaService);
+    await prisma.webhookEvent.create({ data: { provider: 'mock', eventId, payload: {} } });
+
+    const busy = await send().expect(409);
+    expect(busy.body.code).toBe('WEBHOOK_IN_PROGRESS');
+
+    await prisma.webhookEvent.update({
+      where: { provider_eventId: { provider: 'mock', eventId } },
+      data: { createdAt: new Date(Date.now() - 5 * 60_000) },
+    });
+    await send().expect(200);
+    const state = await t.http().get(`/payments/${pay.body.id}`).set(auth(farmer.token)).expect(200);
+    expect(state.body.status).toBe('SUCCEEDED');
+    expect((await send().expect(200)).body).toEqual({ duplicate: true });
   });
 });

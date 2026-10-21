@@ -262,6 +262,7 @@ Business codes:
 | Payouts | 503 | `PAYOUTS_SUSPENDED` (emergency stop, see above) |
 | Webhooks | 401 | `BAD_SIGNATURE`, `BAD_PAYLOAD` |
 | Webhooks | 400 | `WEBHOOK_EXPIRED` (signed timestamp more than 5 min old or more than 1 min ahead) |
+| Webhooks | 409 | `WEBHOOK_IN_PROGRESS` (event recorded but not yet processed; the provider retries, and a record older than 60 s is taken over) |
 | Work | 400 | `NOT_ACTIVE`, `NOT_TODAY`, `TOO_FAR`, `NOT_A_TASK`, `UNIT_CLOSED`, `FUTURE_DAY`, `NOT_DISPUTABLE`, `NOT_DISPUTED`, `ALREADY_ENDED` |
 | Messages | 400 | `EMPTY_MESSAGE`, `CONVERSATION_CLOSED`, `NO_AUDIO`, `BAD_AUDIO`, `BAD_DURATION` |
 | Reviews | 400 | `NOTHING_TO_REVIEW` |
