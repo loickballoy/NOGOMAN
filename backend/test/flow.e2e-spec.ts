@@ -281,8 +281,9 @@ describe('Nogoman end-to-end flow', () => {
     await http().post(`/work-units/${units[1].id}/dispute`).set(auth(farmer.token))
       .send({ reason: 'Absent le matin' }).expect(201);
 
-    // Two days later every remaining unit is past its auto-release time.
-    const result = await app.get(WorkService).autoRelease(addDays(new Date(), 3));
+    // Four days on, every remaining unit is past its auto-release time (day 3 is due the next
+    // morning at AUTO_RELEASE_HOUR_UTC), whatever the hour the suite runs at.
+    const result = await app.get(WorkService).autoRelease(addDays(new Date(), 4));
     expect(result).toEqual({ released: 0, missed: 1 }); // day 3: no check-in -> refunded
     expect(await ledger.balance(Accounts.payable(farmer.id).code)).toBe(4725);
 
