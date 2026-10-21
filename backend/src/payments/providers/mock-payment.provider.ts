@@ -24,22 +24,35 @@ export class MockPaymentProvider implements PaymentProvider {
     return { providerRef: `mock_pay_${req.payoutId}_${randomToken(6)}` };
   }
 
-  sign(rawBody: string): string {
-    return hmacSha256(this.config.mockWebhookSecret, rawBody);
+  /**
+   * Signature of a mock webhook: hex HMAC-SHA256 of `${timestamp}.${rawBody}`, where `timestamp`
+   * is the `x-mock-timestamp` header (Unix time in whole seconds).
+   */
+  sign(timestamp: string, rawBody: string): string {
+    return hmacSha256(this.config.mockWebhookSecret, `${timestamp}.${rawBody}`);
+  }
+
+  /** The headers of a mock webhook sent at `at` (now by default). */
+  signedHeaders(rawBody: string, at: Date = new Date()): Record<'x-mock-timestamp' | 'x-mock-signature', string> {
+    const timestamp = String(Math.floor(at.getTime() / 1000));
+    return { 'x-mock-timestamp': timestamp, 'x-mock-signature': this.sign(timestamp, rawBody) };
   }
 
   parseWebhook(headers: Record<string, string | string[] | undefined>, rawBody: Buffer): WebhookEvent {
+    const timestamp = headers['x-mock-timestamp'];
     const signature = headers['x-mock-signature'];
-    if (typeof signature !== 'string' || !/^[0-9a-f]{64}$/.test(signature)
-      || !safeEqualHex(signature, this.sign(rawBody.toString('utf8')))) {
-      throw new UnauthorizedException({ code: 'BAD_SIGNATURE' });
+    if (typeof timestamp !== 'string' || !/^\d{1,12}$/.test(timestamp)
+      || typeof signature !== 'string' || !/^[0-9a-f]{64}$/.test(signature)
+      || !safeEqualHex(signature, this.sign(timestamp, rawBody.toString('utf8')))) {
+      throw new UnauthorizedException({ code: 'BAD_SIGNATURE', message: 'Signature du webhook invalide.' });
     }
     const body = JSON.parse(rawBody.toString('utf8'));
     if (!['collection', 'payout'].includes(body.kind) || !['SUCCEEDED', 'FAILED'].includes(body.status)
       || typeof body.eventId !== 'string' || typeof body.providerRef !== 'string'
       || (body.amountXof !== undefined && !Number.isInteger(body.amountXof))) {
-      throw new UnauthorizedException({ code: 'BAD_PAYLOAD' });
+      throw new UnauthorizedException({ code: 'BAD_PAYLOAD', message: 'Contenu du webhook invalide.' });
     }
-    return body as WebhookEvent;
+    // The date comes from the signed header, never from the body.
+    return { ...body, occurredAt: new Date(Number(timestamp) * 1000) } as WebhookEvent;
   }
 }
