@@ -9,6 +9,11 @@ import { planUnits, unitsFees, unitsTotal } from '../work/work-units';
 import { FundJobDto } from './dto';
 import { PAYMENT_PROVIDER, PaymentProvider, WebhookEvent } from './providers/payment-provider';
 
+/** Signed webhooks older than this are refused (rule 6). */
+const WEBHOOK_MAX_AGE_MS = 5 * 60_000;
+/** Tolerated clock drift for webhooks dated in the future. */
+const WEBHOOK_MAX_AHEAD_MS = 60_000;
+
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
@@ -51,6 +56,8 @@ export class PaymentsService {
     if (dto.operator && !phone) {
       throw new BadRequestException({ code: 'PHONE_REQUIRED', message: 'Indiquez le numéro mobile money qui paie.' });
     }
+    // Rule 3: the rates quoted now are the ones the units will be created with on settlement.
+    const { farmerFeeBps, workerFeeBps } = this.config;
     const units = engagements.flatMap((e) => planUnits(job, e, this.config));
     const payment = await this.prisma.payment.create({
       data: {
@@ -61,6 +68,8 @@ export class PaymentsService {
         phone,
         amountXof: unitsTotal(units),
         feeXof: unitsFees(units),
+        farmerFeeBps,
+        workerFeeBps,
         engagements: { connect: engagements.map((e) => ({ id: e.id })) },
       },
     });
@@ -98,6 +107,7 @@ export class PaymentsService {
   async handleWebhook(providerName: string, headers: Record<string, string | string[] | undefined>, rawBody: Buffer) {
     if (providerName !== this.provider.name) throw new NotFoundException();
     const event = this.provider.parseWebhook(headers, rawBody);
+    this.assertFresh(event.occurredAt);
     try {
       await this.prisma.webhookEvent.create({
         data: { provider: providerName, eventId: event.eventId, payload: event as unknown as Prisma.InputJsonValue },
@@ -108,6 +118,20 @@ export class PaymentsService {
     }
     await this.applyEvent(event);
     return { ok: true };
+  }
+
+  /**
+   * Rule 6: a signed event more than 5 minutes old, or dated more than 1 minute ahead, is a replay
+   * or a broken clock. It is refused before anything is recorded, so the provider's retry still works.
+   */
+  private assertFresh(occurredAt: Date, now = Date.now()) {
+    const at = occurredAt instanceof Date ? occurredAt.getTime() : NaN;
+    if (Number.isNaN(at) || now - at > WEBHOOK_MAX_AGE_MS || at - now > WEBHOOK_MAX_AHEAD_MS) {
+      throw new BadRequestException({
+        code: 'WEBHOOK_EXPIRED',
+        message: 'Notification de paiement trop ancienne ou mal datée. Elle est refusée.',
+      });
+    }
   }
 
   async applyEvent(event: WebhookEvent) {
@@ -140,6 +164,13 @@ export class PaymentsService {
         include: { job: true, engagements: true },
       });
       const job = payment.job;
+      // Fees frozen at funding (rule 3), not the rates in force when the webhook arrives.
+      // Payments made before the rates were stored fall back to the current configuration.
+      const fees = {
+        farmerFeeBps: payment.farmerFeeBps ?? this.config.farmerFeeBps,
+        workerFeeBps: payment.workerFeeBps ?? this.config.workerFeeBps,
+        autoReleaseHourUtc: this.config.autoReleaseHourUtc,
+      };
       await this.ledger.post(tx, 'FUNDING', `funding:${payment.id}`, [
         { account: Accounts.clearing(payment.provider), amountXof: -payment.amountXof },
         { account: Accounts.escrow(job.id), amountXof: payment.amountXof },
@@ -148,7 +179,7 @@ export class PaymentsService {
       let allocated = 0;
       for (const engagement of payment.engagements) {
         if (engagement.status !== EngagementStatus.AWAITING_FUNDING) continue;
-        const units = planUnits(job, engagement, this.config);
+        const units = planUnits(job, engagement, fees);
         allocated += unitsTotal(units);
         await tx.workUnit.createMany({ data: units.map((u) => ({ ...u, engagementId: engagement.id })) });
         await tx.engagement.update({ where: { id: engagement.id }, data: { status: EngagementStatus.ACTIVE } });

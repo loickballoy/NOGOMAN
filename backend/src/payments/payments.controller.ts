@@ -91,6 +91,6 @@ export class PaymentsController {
       reason: dto.reason,
       amountXof: dto.amountXof,
     });
-    return this.payments.handleWebhook('mock', { 'x-mock-signature': this.mock.sign(body) }, Buffer.from(body));
+    return this.payments.handleWebhook('mock', this.mock.signedHeaders(body), Buffer.from(body));
   }
 }

@@ -8,6 +8,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateJobDto, SearchJobsDto, UpdateJobDto } from './dto';
 import { presentJob } from './job.presenter';
 
+/** 2000 -> "2 000": thousands grouped with a plain space, the way amounts are read aloud. */
+const formatXof = (amount: number) => String(amount).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+
 const TAKEN_STATUSES = ['AWAITING_FUNDING', 'ACTIVE', 'COMPLETED'] as const;
 
 @Injectable()
@@ -24,7 +27,16 @@ export class JobsService {
     }
   }
 
+  /** Rate floor (MIN_DAILY_RATE_XOF), for DAILY and TASK jobs alike. */
+  private assertRate(rateXof: number) {
+    const min = this.config.minDailyRateXof;
+    if (rateXof < min) {
+      throw new BadRequestException({ code: 'RATE_TOO_LOW', message: `Le tarif minimum est de ${formatXof(min)} FCFA.` });
+    }
+  }
+
   async create(farmer: User, dto: CreateJobDto) {
+    this.assertRate(dto.rateXof);
     this.assertStartDate(dto.startDate);
     if (this.config.requireKycToTransact && farmer.kycLevel < 1) {
       throw new ForbiddenException({ code: 'KYC_REQUIRED', message: "Vérifiez votre identité pour publier une offre." });
@@ -120,6 +132,7 @@ export class JobsService {
     if (job.status !== JobStatus.OPEN || taken > 0) {
       throw new BadRequestException({ code: 'JOB_LOCKED', message: "L'offre ne peut plus être modifiée après une embauche." });
     }
+    if (dto.rateXof !== undefined) this.assertRate(dto.rateXof);
     if (dto.startDate) this.assertStartDate(dto.startDate);
     const updated = await this.prisma.job.update({
       where: { id },

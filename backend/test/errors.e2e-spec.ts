@@ -222,7 +222,7 @@ describe('Uniform error format { code, message } (issue #14)', () => {
     it('rejects a well signed but invalid event with BAD_PAYLOAD and a French message', async () => {
       const body = JSON.stringify({ eventId: 'evt_err_2', kind: 'remboursement', providerRef: 'mock_col_x', status: 'PEUT_ETRE' });
       const res = await http().post('/webhooks/payments/mock').set('Content-Type', 'application/json')
-        .set('x-mock-signature', app.get(MockPaymentProvider).sign(body)).send(body);
+        .set(app.get(MockPaymentProvider).signedHeaders(body)).send(body);
       expectApiError(res, 401, 'BAD_PAYLOAD');
     });
   });

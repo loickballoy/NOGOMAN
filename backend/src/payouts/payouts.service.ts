@@ -1,9 +1,11 @@
 import {
-  BadRequestException, ConflictException, HttpException, Inject, Injectable, Logger, ServiceUnavailableException,
-  UnauthorizedException,
+  BadRequestException, ConflictException, HttpException, Inject, Injectable, Logger, OnModuleInit,
+  ServiceUnavailableException, UnauthorizedException,
 } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
+import { SchedulerRegistry } from '@nestjs/schedule';
 import { Payout, PayoutStatus } from '@prisma/client';
+import { CronJob } from 'cron';
+import { withAdvisoryLock } from '../common/advisory-lock';
 import { formatXof } from '../common/money';
 import { AppConfig } from '../config/app-config';
 import { Accounts, LedgerService } from '../ledger/ledger.service';
@@ -11,6 +13,15 @@ import { PAYMENT_PROVIDER, PaymentProvider } from '../payments/providers/payment
 import { PrismaService } from '../prisma/prisma.service';
 
 const FAILED_PAYOUT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+
+/** Name of the daily pass in the SchedulerRegistry. */
+export const PAYOUTS_JOB = 'payouts';
+
+/** Why a payout is refused while PAYOUTS_ENABLED=false (503 PAYOUTS_SUSPENDED for the API). */
+export const payoutsSuspended = () => new ServiceUnavailableException({
+  code: 'PAYOUTS_SUSPENDED',
+  message: 'Les versements sont suspendus pour le moment. Votre solde est conservé.',
+});
 
 /** Why no payout was started for a user. */
 export type PayoutRefusal =
@@ -37,27 +48,40 @@ export interface PayoutView {
 const hoursUntil = (at: Date) => Math.max(1, Math.ceil((at.getTime() - Date.now()) / 3_600_000));
 
 @Injectable()
-export class PayoutsService {
+export class PayoutsService implements OnModuleInit {
   private readonly logger = new Logger(PayoutsService.name);
-  private running = false;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly ledger: LedgerService,
     private readonly config: AppConfig,
+    private readonly scheduler: SchedulerRegistry,
     @Inject(PAYMENT_PROVIDER) private readonly provider: PaymentProvider,
   ) {}
 
-  @Cron('*/15 * * * *')
+  /**
+   * One payout pass a day at PAYOUT_HOUR_UTC, so each user costs at most one transfer fee a day.
+   * The hour comes from the config, hence a job registered here rather than a static @Cron.
+   */
+  onModuleInit() {
+    const job = CronJob.from({
+      cronTime: `0 ${this.config.payoutHourUtc} * * *`,
+      timeZone: 'UTC',
+      onTick: () => this.scheduled(),
+    });
+    this.scheduler.addCronJob(PAYOUTS_JOB, job);
+    if (this.config.cronEnabled) job.start();
+  }
+
+  /** The daily pass. With several instances, only the one that takes the lock pays (rule 7). */
   async scheduled() {
-    if (!this.config.cronEnabled || this.running) return;
-    this.running = true;
+    if (!this.config.cronEnabled) return;
     try {
-      await this.runBatch();
+      const outcome = await withAdvisoryLock(this.prisma, 'payouts:daily', () => this.runBatch());
+      if (outcome.ran) this.logger.log(`daily payouts: ${outcome.result} started`);
+      else this.logger.log('daily payouts already running on another instance');
     } catch (err) {
       this.logger.error(`payout batch failed: ${String(err)}`);
-    } finally {
-      this.running = false;
     }
   }
 
@@ -66,10 +90,7 @@ export class PayoutsService {
    * so several days or jobs released together cost a single provider fee.
    */
   async runBatch(): Promise<number> {
-    if (!this.config.payoutsEnabled) {
-      this.logger.warn('payouts are suspended (PAYOUTS_ENABLED=false): batch skipped');
-      return 0;
-    }
+    if (!this.config.payoutsEnabled) return 0;
     const rows = await this.prisma.$queryRaw<{ userId: string; balance: bigint }[]>`
       SELECT a."userId", SUM(p."amountXof")::bigint AS balance
       FROM "LedgerAccount" a JOIN "Posting" p ON p."accountId" = a."id"
@@ -84,9 +105,14 @@ export class PayoutsService {
     return started;
   }
 
-  /** Batch payout of one user, at MIN_PAYOUT_XOF. True if a transfer was started. */
+  /**
+   * Batch payout of one user, at MIN_PAYOUT_XOF. True if a transfer was started.
+   * Throws `payoutsSuspended()` while payouts are stopped, before anything is written.
+   */
   async payUser(userId: string): Promise<boolean> {
-    return (await this.attemptPayout(userId, this.config.minPayoutXof)).ok;
+    const attempt = await this.attemptPayout(userId, this.config.minPayoutXof);
+    if (!attempt.ok && attempt.reason === 'SUSPENDED') throw payoutsSuspended();
+    return attempt.ok;
   }
 
   /**
@@ -171,10 +197,7 @@ export class PayoutsService {
   private refusalError(refusal: Extract<PayoutAttempt, { ok: false }>): HttpException {
     switch (refusal.reason) {
       case 'SUSPENDED':
-        return new ServiceUnavailableException({
-          code: 'PAYOUTS_SUSPENDED',
-          message: 'Les retraits sont suspendus pour le moment. Votre argent reste sur votre solde. Réessayez plus tard.',
-        });
+        return payoutsSuspended();
       case 'ACCOUNT_DISABLED':
         return new UnauthorizedException({ code: 'ACCOUNT_DISABLED', message: 'Compte désactivé.' });
       case 'NO_METHOD':
