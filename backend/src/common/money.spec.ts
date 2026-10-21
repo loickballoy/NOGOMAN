@@ -1,4 +1,4 @@
-import { farmerCost, feeFor, unitAmounts, workerNet } from './money';
+import { farmerCost, feeFor, formatXof, unitAmounts, workerNet } from './money';
 
 describe('fees', () => {
   it('takes 2% on each side of a 4 500 FCFA day', () => {
@@ -27,5 +27,14 @@ describe('fees', () => {
 
   it('rejects fractional amounts', () => {
     expect(() => feeFor(10.5, 200)).toThrow();
+  });
+});
+
+describe('formatXof', () => {
+  it('groups thousands with spaces, as said aloud', () => {
+    expect(formatXof(0)).toBe('0 FCFA');
+    expect(formatXof(999)).toBe('999 FCFA');
+    expect(formatXof(10_000)).toBe('10 000 FCFA');
+    expect(formatXof(1_234_567)).toBe('1 234 567 FCFA');
   });
 });

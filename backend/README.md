@@ -21,7 +21,19 @@ Ledger rows can't be deleted.
 | No check-in and no confirmation | Day refunded | escrow → farmer |
 | Either side disputes | Held until an admin decides | – |
 | Daily payout pass (`PAYOUT_HOUR_UTC`, 18:00 UTC by default) | One transfer per user, whatever was released, if the balance reaches `MIN_PAYOUT_XOF` (2 000 FCFA) | user balance → provider clearing |
+| Instant payout (`POST /me/payouts/instant`) | The whole balance at once, from `INSTANT_PAYOUT_MIN_XOF` (10 000 FCFA), free | user balance → provider clearing |
 | Transfer fails | Money goes back to the balance, retried after 6 h | reversed |
+
+### Instant payout
+
+`POST /me/payouts/instant` (worker or farmer) sends the whole balance now instead of waiting
+for the daily pass, once it reaches `INSTANT_PAYOUT_MIN_XOF` (default 10 000 FCFA). It costs
+nothing: no fee, and the same ledger entries as the batch (`PAYOUT`, then `PAYOUT_REVERSAL`
+if the transfer fails). The answer, `201 { id, amountXof, status: "PENDING", operator }`,
+never contains the payout number. The daily pass and the instant payout share one function
+(`PayoutsService.attemptPayout`), which checks, in this order and under the user's row lock:
+payouts switched on, payout number set, no safety delay after a number change, no transfer
+already pending, no failure in the last 6 h, balance at least the threshold.
 
 Task jobs ("à la tâche") have a single unit. It's paid when the farmer confirms, or 48 h
 after the worker marks it done if the farmer doesn't object.
@@ -50,7 +62,7 @@ If something goes wrong with payouts (provider incident, suspected fraud), set
 `PAYOUTS_ENABLED=false` and restart the API. Then:
 
 - the daily payout pass and `POST /admin/payouts/run` pay nobody;
-- a payout requested by a user (instant payout, coming next) is refused with 503 `PAYOUTS_SUSPENDED`;
+- a payout requested by a user (`POST /me/payouts/instant`) is refused with 503 `PAYOUTS_SUSPENDED`;
 - nothing is written to the ledger: every balance stays as it is, to the franc;
 - payouts already sent to the provider are still settled by their webhooks. A failed one puts
   the money back on the user's balance.
@@ -195,7 +207,7 @@ Full schema at `/docs`.
 | Hiring | `POST /jobs/:id/applications`, `GET /jobs/:id/applications`, `GET /applications/mine`, `POST /applications/:id/{hire,reject,withdraw}` |
 | Escrow | `GET /jobs/:id/funding/quote`, `POST /jobs/:id/funding`, `GET /payments/:id`, `POST /webhooks/payments/:provider` |
 | Work | `GET /engagements/mine`, `GET /engagements/:id`, `POST /engagements/:id/cancel`, `POST /work-units/:id/{check-in,done,confirm,dispute}`, `POST /jobs/:id/confirm-day` |
-| Payouts | `GET /me/payouts` |
+| Payouts | `GET /me/payouts`, `POST /me/payouts/instant` |
 | Messages | `GET /conversations`, `GET /conversations/unread`, `POST /applications/:id/conversation`, `GET/POST /conversations/:id/messages`, `POST /conversations/:id/voice`, `GET /messages/:id/audio`, `POST /conversations/:id/read` |
 | Reviews | `POST /engagements/:id/reviews` |
 | Admin | `GET /admin/disputes`, `POST /admin/work-units/:id/resolve`, `POST /admin/users/:id/kyc`, `GET /admin/ledger/trial-balance`, `POST /admin/payouts/run`, `POST /admin/work/auto-release` |
@@ -245,6 +257,8 @@ Business codes:
 | Hiring | 400 | `PAYOUT_METHOD_REQUIRED`, `OWN_JOB`, `JOB_NOT_OPEN`, `JOB_FULL`, `NOT_PENDING`, `NOT_WITHDRAWABLE` |
 | Hiring | 409 | `ALREADY_APPLIED` |
 | Escrow | 400 | `NOTHING_TO_FUND`, `PHONE_REQUIRED`, `PAYMENT_START_FAILED` |
+| Payouts | 400 | `INSTANT_PAYOUT_TOO_LOW`, `PAYOUT_METHOD_REQUIRED` |
+| Payouts | 409 | `PAYOUT_COOLDOWN` (safety delay after a number change, or a failed transfer under 6 h old), `PAYOUT_IN_PROGRESS` |
 | Payouts | 503 | `PAYOUTS_SUSPENDED` (emergency stop, see above) |
 | Webhooks | 401 | `BAD_SIGNATURE`, `BAD_PAYLOAD` |
 | Webhooks | 400 | `WEBHOOK_EXPIRED` (signed timestamp more than 5 min old or more than 1 min ahead) |

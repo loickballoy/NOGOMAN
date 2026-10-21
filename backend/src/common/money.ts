@@ -22,3 +22,8 @@ export function unitAmounts(grossXof: number, farmerFeeBps: number, workerFeeBps
 export const farmerCost = (u: UnitAmounts) => u.grossXof + u.farmerFeeXof;
 /** What the worker receives for a unit. */
 export const workerNet = (u: UnitAmounts) => u.grossXof - u.workerFeeXof;
+
+/** "10 000 FCFA": an amount as it is written and read aloud in French. */
+export function formatXof(amountXof: number): string {
+  return `${String(amountXof).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} FCFA`;
+}

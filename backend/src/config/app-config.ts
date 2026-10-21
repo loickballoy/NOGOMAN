@@ -70,6 +70,7 @@ export class AppConfig {
   readonly checkInRadiusKm: number;
   readonly minPayoutXof: number;
   readonly payoutHourUtc: number;
+  readonly instantPayoutMinXof: number;
   readonly payoutsEnabled: boolean;
   /** How long payouts wait after an existing payout number or operator is replaced. */
   readonly payoutCooldownHours: number;
@@ -154,6 +155,8 @@ export class AppConfig {
     this.taskAutoReleaseHours = int(env, 'TASK_AUTO_RELEASE_HOURS', 48);
     this.checkInRadiusKm = Number(env.CHECKIN_RADIUS_KM ?? 2);
     this.minPayoutXof = int(env, 'MIN_PAYOUT_XOF', 2000);
+    this.instantPayoutMinXof = int(env, 'INSTANT_PAYOUT_MIN_XOF', 10_000);
+    if (this.instantPayoutMinXof < 1) throw new Error('INSTANT_PAYOUT_MIN_XOF must be at least 1');
     this.payoutHourUtc = int(env, 'PAYOUT_HOUR_UTC', 18);
     if (this.payoutHourUtc < 0 || this.payoutHourUtc > 23) throw new Error('PAYOUT_HOUR_UTC must be between 0 and 23');
     // Emergency stop: false suspends every payout; balances stay on the ledger untouched.
