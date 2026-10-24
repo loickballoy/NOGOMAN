@@ -259,6 +259,9 @@ export class PayoutsService implements OnModuleInit {
       return;
     }
     if (status === 'SUCCEEDED') {
+      if (payout.status === PayoutStatus.FAILED) {
+        this.logger.error(`payout ${payout.id}: provider reports SUCCEEDED after it was reversed. Money may be paid twice: check by hand.`);
+      }
       await this.prisma.payout.updateMany({
         where: { id: payout.id, status: PayoutStatus.PENDING },
         data: { status: PayoutStatus.SUCCEEDED },
