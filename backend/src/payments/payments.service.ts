@@ -160,8 +160,10 @@ export class PaymentsService {
     if (event.kind === 'payout') return this.payouts.settle(event.providerRef, event.status, event.reason, event.amountXof);
     const payment = await this.prisma.payment.findUnique({ where: { providerRef: event.providerRef } });
     if (!payment) {
+      // Possibly arrived before fund() stored the providerRef: fail so the event is released and
+      // the provider's retry finds the payment, instead of recording the event as processed.
       this.logger.warn(`webhook for unknown collection ${event.providerRef}`);
-      return;
+      throw new ConflictException({ code: 'PAYMENT_NOT_FOUND_YET', message: 'Paiement pas encore enregistré. Réessayez dans un instant.' });
     }
     // Never activate escrow on a smaller amount than the farmer was asked for (tampered or
     // partial payment). The payment stays pending for an admin to look at.

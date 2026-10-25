@@ -74,4 +74,14 @@ describe('Webhook retried after a failed application (#86)', () => {
     expect(state.body.status).toBe('SUCCEEDED');
     expect((await send().expect(200)).body).toEqual({ duplicate: true });
   });
+
+  it('does not record an event for a collection it does not know yet, so the retry can apply it', async () => {
+    const eventId = `e2e_${randomUUID()}`;
+    const body = JSON.stringify({ eventId, kind: 'collection', providerRef: `unknown_${randomUUID()}`, status: 'SUCCEEDED' });
+    const res = await t.http().post('/webhooks/payments/mock').set('Content-Type', 'application/json')
+      .set(t.app.get(MockPaymentProvider).signedHeaders(body)).send(body).expect(409);
+    expect(res.body.code).toBe('PAYMENT_NOT_FOUND_YET');
+    const row = await t.app.get(PrismaService).webhookEvent.findUnique({ where: { provider_eventId: { provider: 'mock', eventId } } });
+    expect(row).toBeNull();
+  });
 });
