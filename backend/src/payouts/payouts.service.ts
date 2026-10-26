@@ -208,8 +208,10 @@ export class PayoutsService implements OnModuleInit {
         return;
       } catch (err) {
         this.logger.error(`payout ${payout.id}: could not save providerRef ${providerRef} (attempt ${attempt}): ${String(err)}`);
+        if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
       }
     }
+    this.logger.error(`payout ${payout.id}: providerRef ${providerRef} NOT saved, left PENDING: settle by hand or by reconciliation`);
   }
 
   /** The error contract of epic #3: a stable code and a plain French message. */

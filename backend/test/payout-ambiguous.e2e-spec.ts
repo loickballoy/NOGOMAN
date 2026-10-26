@@ -50,6 +50,19 @@ describe('Payout with an ambiguous provider outcome (#87)', () => {
     expect(state.payouts[0].status).toBe('PENDING');
   });
 
+  it('saves providerRef on a retry when the first save fails, so the webhook can settle it', async () => {
+    const worker = await funded();
+    const prisma = t.app.get(PrismaService);
+    const real = prisma.payout.update.bind(prisma.payout);
+    jest.spyOn(prisma.payout, 'update').mockImplementationOnce((() => Promise.reject(new Error('db blip'))) as never)
+      .mockImplementation(real as never);
+    await t.http().post('/me/payouts/instant').set(auth(worker.token)).send({}).expect(201);
+    jest.restoreAllMocks();
+    const payout = await prisma.payout.findFirstOrThrow({ where: { userId: worker.id } });
+    expect(payout.providerRef).toMatch(/^mock_pay_/);
+    expect(payout.status).toBe('PENDING');
+  });
+
   it('gives the money back on an explicit rejection', async () => {
     const worker = await funded();
     jest.spyOn(t.app.get(MockPaymentProvider), 'createPayout').mockRejectedValueOnce(new PayoutRejectedError());
