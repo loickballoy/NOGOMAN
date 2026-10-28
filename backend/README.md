@@ -103,6 +103,8 @@ per second and cached for a day. For heavier traffic, self-host Nominatim and se
 - Refresh tokens rotate on every use. Reusing an old token logs out every session of that user.
 - Login codes are capped per number (`OTP_MAX_PER_DAY`), per IP, and for everyone together
   (`SMS_DAILY_LIMIT`, against bots burning the SMS budget). Codes are deleted after 7 days.
+- Each code allows `OTP_MAX_ATTEMPTS` guesses (right or wrong). An attempt is claimed with one atomic
+  update before the code is compared, so parallel requests cannot exceed the limit.
 - Replacing an existing payout number or operator holds payouts for `PAYOUT_COOLDOWN_HOURS` (72 h;
   `PAYOUT_HOLD_HOURS` is still read as the old name) and warns the account owner by SMS, so a
   stolen phone or account can't redirect the money at once. `GET /me` shows when payouts resume

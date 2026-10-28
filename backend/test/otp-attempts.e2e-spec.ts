@@ -11,7 +11,7 @@ interface Reply {
  */
 
 const MAX = 5; // OTP_MAX_ATTEMPTS default
-const PARALLEL = 40;
+const PARALLEL = 40; // 40 + 1 + 3 + 5 requests stay under OTP_VERIFY_PER_IP_MINUTE (50)
 
 describe('OTP attempts are counted atomically (issue #103)', () => {
   const phone = phones('103');
@@ -72,7 +72,7 @@ describe('OTP attempts are counted atomically (issue #103)', () => {
     const code = await requestCode(number);
 
     const results = await Promise.all(
-      Array.from({ length: 5 }, () => verify(number, code)),
+      Array.from({ length: 3 }, () => verify(number, code)),
     );
 
     expect(results.filter((r) => r.status === 200)).toHaveLength(1);
