@@ -167,8 +167,9 @@ export class PaymentsService {
     }
     // Never activate escrow on a smaller amount than the farmer was asked for (tampered or
     // partial payment). The payment stays pending for an admin to look at.
-    if (event.status === 'SUCCEEDED' && event.amountXof !== undefined && event.amountXof !== payment.amountXof) {
-      this.logger.error(`collection ${payment.id}: provider reports ${event.amountXof} XOF, expected ${payment.amountXof}. Not settled.`);
+    // A success without a reported amount cannot be checked either: same outcome.
+    if (event.status === 'SUCCEEDED' && event.amountXof !== payment.amountXof) {
+      this.logger.error(`collection ${payment.id}: provider reports ${event.amountXof ?? 'no amount'} XOF, expected ${payment.amountXof}. Not settled.`);
       return;
     }
     if (event.status === 'SUCCEEDED') return this.settleCollection(payment.id);

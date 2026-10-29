@@ -98,4 +98,16 @@ describe('Webhook retried after a failed application (#86)', () => {
     const state = await t.http().get(`/payments/${pay.body.id}`).set(auth(farmer.token)).expect(200);
     expect(state.body.status).toBe('SUCCEEDED');
   });
+
+  it('does not settle a successful collection that reports no amount', async () => {
+    const { farmer } = await t.farmerAndWorker();
+    const job = await t.postJob(farmer);
+    await t.hiredOn(job);
+    const pay = await t.http().post(`/jobs/${job.id}/funding`).set(auth(farmer.token)).send({}).expect(201);
+    const body = JSON.stringify({ eventId: `e2e_${randomUUID()}`, kind: 'collection', providerRef: pay.body.providerRef, status: 'SUCCEEDED' });
+    await t.http().post('/webhooks/payments/mock').set('Content-Type', 'application/json')
+      .set(t.app.get(MockPaymentProvider).signedHeaders(body)).send(body).expect(200);
+    const state = await t.http().get(`/payments/${pay.body.id}`).set(auth(farmer.token)).expect(200);
+    expect(state.body.status).toBe('PENDING');
+  });
 });
