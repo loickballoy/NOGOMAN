@@ -89,7 +89,7 @@ export class PaymentsController {
       providerRef: record.providerRef,
       status: dto.status,
       reason: dto.reason,
-      amountXof: dto.amountXof,
+      amountXof: dto.amountXof ?? record.amountXof,
     });
     return this.payments.handleWebhook('mock', this.mock.signedHeaders(body), Buffer.from(body));
   }
