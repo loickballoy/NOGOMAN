@@ -176,9 +176,14 @@ When the audit fails:
    advisories. An expired exception fails the build again so it gets re-checked; remove an
    exception as soon as a fix ships.
 
-Current fixes: `deepmerge-ts` is forced to 8.x under `@prisma/config` (prisma 6.19 pins a
-vulnerable 7.x and only calls `deepmerge()`, unchanged in 8.x). Remove that override when moving
-to a prisma release that ships the fix.
+Current `overrides` in `package.json`, each scoped to the package that pins the vulnerable
+version. Remove one as soon as its parent ships the fix:
+
+- `deepmerge-ts` 8.x under `@prisma/config`: prisma 6.19 pins a vulnerable 7.x and only calls
+  `deepmerge()`, unchanged in 8.x.
+- `multer` 2.5.0 under `@nestjs/platform-express`: 11.2.8 still pins 2.4.0 (DoS,
+  GHSA-q7qp-rjg7-q26m). Same API; voice uploads are covered by `test/flow.e2e-spec.ts`.
+- `js-yaml` 5.4.3 under `@nestjs/swagger`: 11.4.7 pins 5.3.0 (GHSA-r3ph-w7gj-g6xm).
 
 ## Run on the homelab without a domain
 
