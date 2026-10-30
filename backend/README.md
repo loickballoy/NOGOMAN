@@ -38,6 +38,11 @@ already pending, no failure in the last 6 h, balance at least the threshold.
 Task jobs ("à la tâche") have a single unit. It's paid when the farmer confirms, or 48 h
 after the worker marks it done if the farmer doesn't object.
 
+A provider adapter throws `PayoutRejectedError` from `createPayout` only when the provider explicitly
+refused the transfer: the money then returns to the balance. Any other error (timeout, network) is
+ambiguous, so the payout stays `PENDING` (no second transfer can start) until its webhook or the
+reconciliation settles it. `payoutId` is the idempotency key sent to the provider.
+
 Payouts go out once a day to save transfer fees: a smaller balance waits for the next pass. With
 several API instances, only one runs the pass (PostgreSQL advisory lock); `CRON_ENABLED=false`
 turns it off.

@@ -9,7 +9,7 @@ import { withAdvisoryLock } from '../common/advisory-lock';
 import { formatXof } from '../common/money';
 import { AppConfig } from '../config/app-config';
 import { Accounts, LedgerService } from '../ledger/ledger.service';
-import { PAYMENT_PROVIDER, PaymentProvider } from '../payments/providers/payment-provider';
+import { PAYMENT_PROVIDER, PaymentProvider, PayoutRejectedError } from '../payments/providers/payment-provider';
 import { PrismaService } from '../prisma/prisma.service';
 
 const FAILED_PAYOUT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
@@ -177,20 +177,41 @@ export class PayoutsService implements OnModuleInit {
     return attempt;
   }
 
-  /** Hands the transfer to the provider; if it refuses, the money goes back to the balance. */
+  /**
+   * Hands the transfer to the provider (`payoutId` is the idempotency key). Only an explicit
+   * rejection gives the money back: any other error is ambiguous (the transfer may have gone
+   * through), so the payout stays PENDING, which also blocks a second transfer, until a webhook
+   * or the reconciliation settles it.
+   */
   private async send(payout: Payout) {
+    let providerRef: string;
     try {
-      const res = await this.provider.createPayout({
+      ({ providerRef } = await this.provider.createPayout({
         payoutId: payout.id,
         amountXof: payout.amountXof,
         operator: payout.operator,
         phone: payout.phone,
-      });
-      await this.prisma.payout.update({ where: { id: payout.id }, data: { providerRef: res.providerRef } });
+      }));
     } catch (err) {
-      this.logger.error(`payout ${payout.id} rejected by provider: ${String(err)}`);
-      await this.fail(payout.id, 'provider_error');
+      if (err instanceof PayoutRejectedError) {
+        this.logger.error(`payout ${payout.id} rejected by provider: ${String(err)}`);
+        await this.fail(payout.id, 'provider_error');
+      } else {
+        this.logger.error(`payout ${payout.id}: provider outcome unknown, left PENDING for reconciliation: ${String(err)}`);
+      }
+      return;
     }
+    // The transfer is accepted: from here on, never reverse it because of our own storage error.
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await this.prisma.payout.update({ where: { id: payout.id }, data: { providerRef } });
+        return;
+      } catch (err) {
+        this.logger.error(`payout ${payout.id}: could not save providerRef ${providerRef} (attempt ${attempt}): ${String(err)}`);
+        if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
+      }
+    }
+    this.logger.error(`payout ${payout.id}: providerRef ${providerRef} NOT saved, left PENDING: settle by hand or by reconciliation`);
   }
 
   /** The error contract of epic #3: a stable code and a plain French message. */
@@ -240,6 +261,9 @@ export class PayoutsService implements OnModuleInit {
       return;
     }
     if (status === 'SUCCEEDED') {
+      if (payout.status === PayoutStatus.FAILED) {
+        this.logger.error(`payout ${payout.id}: provider reports SUCCEEDED after it was reversed. Money may be paid twice: check by hand.`);
+      }
       await this.prisma.payout.updateMany({
         where: { id: payout.id, status: PayoutStatus.PENDING },
         data: { status: PayoutStatus.SUCCEEDED },

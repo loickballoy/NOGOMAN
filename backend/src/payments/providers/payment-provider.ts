@@ -27,6 +27,18 @@ export interface PayoutResult {
   providerRef: string;
 }
 
+/**
+ * Thrown by `createPayout` only when the provider explicitly refused the transfer (nothing moved).
+ * Any other error (timeout, network, 5xx) is ambiguous: the transfer may have gone through, so the
+ * payout stays PENDING and must never be paid again. `payoutId` is the idempotency key.
+ */
+export class PayoutRejectedError extends Error {
+  constructor(message = 'payout rejected by the provider') {
+    super(message);
+    this.name = 'PayoutRejectedError';
+  }
+}
+
 interface WebhookEventBase {
   /** The provider's unique id for this event: a second delivery with the same id is ignored. */
   eventId: string;
