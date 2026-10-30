@@ -1,0 +1,14 @@
+[
+  {
+    "id": "GHSA-mrhx-c7xc-m3w5",
+    "package": "zod",
+    "expires": "2027-01-30",
+    "reason": "Only reached through the Expo CLI (@expo/cli 57 requires zod ^3.25.76; the fix is zod 4.6.6, a major version the CLI does not support, and 3.x has no patched release). The CLI runs on the developer's machine and in CI, validates our own config files, and is not in the app bundle. The other copy in the tree (eslint-plugin-react-hooks) is already 4.6.7."
+  },
+  {
+    "id": "GHSA-qr28-fpjm-wq7f",
+    "package": "decode-uri-component",
+    "expires": "2027-01-30",
+    "reason": "Pulled by expo-router 57 through query-string 7 (decode-uri-component ^0.2.2). The fix is 0.5.1, ESM-only and outside query-string 7's range; the supported fix is expo-router 58, i.e. the Expo SDK 58 upgrade (npx expo install --fix). Impact is limited to the user's own phone: a crafted deep link with long percent-encoded runs can slow URL parsing in the app; no server is affected. Remove when moving to SDK 58."
+  }
+]

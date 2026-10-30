@@ -2,9 +2,9 @@ name: mobile
 
 on:
   push:
-    paths: ["mobile/**", ".github/workflows/mobile.yml"]
+    paths: ["mobile/**", ".github/workflows/mobile.yml", ".github/scripts/npm-audit.mjs"]
   pull_request:
-    paths: ["mobile/**", ".github/workflows/mobile.yml"]
+    paths: ["mobile/**", ".github/workflows/mobile.yml", ".github/scripts/npm-audit.mjs"]
 
 jobs:
   check:
@@ -20,6 +20,10 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci
+      # `npm audit --audit-level=high`, minus the advisories documented in audit-exceptions.json
+      # (no fix published yet). How to handle an alert: backend/README.md, "Dependency alerts".
+      - name: npm audit --audit-level=high
+        run: node ../.github/scripts/npm-audit.mjs
       - run: npm run typecheck
       - run: npx expo lint
       - run: npx expo export --platform web
