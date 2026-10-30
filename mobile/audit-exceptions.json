@@ -1,14 +1,14 @@
 [
   {
-    "id": "GHSA-vfj7-8cjw-p6xm",
-    "package": "braces",
-    "expires": "2027-01-20",
-    "reason": "No patched release exists (braces 3.0.3 is the latest and is affected). It is only reached through micromatch in Metro's file watcher (metro-file-map, up to 0.87.1), i.e. the bundler on the developer's machine and in CI. It is not part of the app bundle, and the glob patterns it expands come from our own config, not from users."
+    "id": "GHSA-mrhx-c7xc-m3w5",
+    "package": "zod",
+    "expires": "2027-01-30",
+    "reason": "Only reached through the Expo CLI (@expo/cli 57 requires zod ^3.25.76; the fix is zod 4.6.6, a major version the CLI does not support, and 3.x has no patched release). The CLI runs on the developer's machine and in CI, validates our own config files, and is not in the app bundle. The other copy in the tree (eslint-plugin-react-hooks) is already 4.6.7."
   },
   {
-    "id": "GHSA-86w9-cpqp-85rv",
-    "package": "node-forge",
-    "expires": "2027-01-20",
-    "reason": "No patched release exists (node-forge 1.4.0 is the latest and is affected). It is only used by the Expo CLI (@expo/cli, @expo/code-signing-certificates) on the developer's machine and in CI, not in the app bundle. We do not use Expo Updates code signing, the feature that verifies signatures with it."
+    "id": "GHSA-qr28-fpjm-wq7f",
+    "package": "decode-uri-component",
+    "expires": "2027-01-30",
+    "reason": "Pulled by expo-router 57 through query-string 7 (decode-uri-component ^0.2.2). The fix is 0.5.1, ESM-only and outside query-string 7's range; the supported fix is expo-router 58, i.e. the Expo SDK 58 upgrade (npx expo install --fix). Impact is limited to the user's own phone: a crafted deep link with long percent-encoded runs can slow URL parsing in the app; no server is affected. Remove when moving to SDK 58."
   }
 ]
