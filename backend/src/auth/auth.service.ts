@@ -85,11 +85,21 @@ export class AuthService {
     if (!challenge) {
       throw new BadRequestException({ code: 'OTP_EXPIRED', message: 'Code expiré. Demandez un nouveau code.' });
     }
-    if (challenge.attempts >= this.config.otpMaxAttempts) {
+    // Claim an attempt before looking at the code: the guard and the increment are one atomic
+    // statement, so parallel guesses cannot all pass a stale `attempts` check.
+    const claimed = await this.prisma.otpChallenge.updateMany({
+      where: { id: challenge.id, consumedAt: null, attempts: { lt: this.config.otpMaxAttempts } },
+      data: { attempts: { increment: 1 } },
+    });
+    if (claimed.count !== 1) {
+      // Either the guesses are used up, or a parallel request just consumed the code.
+      const current = await this.prisma.otpChallenge.findUnique({ where: { id: challenge.id } });
+      if (current?.consumedAt) {
+        throw new BadRequestException({ code: 'OTP_EXPIRED', message: 'Code expiré. Demandez un nouveau code.' });
+      }
       throw new BadRequestException({ code: 'OTP_TOO_MANY_ATTEMPTS', message: 'Trop d’essais. Demandez un nouveau code.' });
     }
     if (!safeEqualHex(challenge.codeHash, this.codeHash(phone, code))) {
-      await this.prisma.otpChallenge.update({ where: { id: challenge.id }, data: { attempts: { increment: 1 } } });
       throw new BadRequestException({ code: 'OTP_INVALID', message: 'Code incorrect.' });
     }
     const consumed = await this.prisma.otpChallenge.updateMany({

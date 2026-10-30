@@ -283,6 +283,9 @@ model Payment {
   phone         String?
   amountXof     Int
   feeXof        Int
+  /// Fee rates applied when the farmer funded (rule 3). Null on payments made before they were stored.
+  farmerFeeBps  Int?
+  workerFeeBps  Int?
   status        PaymentStatus        @default(PENDING)
   checkoutUrl   String?
   failureReason String?
@@ -372,6 +375,8 @@ model WebhookEvent {
   eventId   String
   payload   Json
   createdAt DateTime @default(now())
+  /// Null while the event is being applied (or if the process died): only processed events are duplicates.
+  processedAt DateTime?
 
   @@unique([provider, eventId])
 }
