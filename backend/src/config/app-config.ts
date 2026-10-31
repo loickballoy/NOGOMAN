@@ -146,8 +146,8 @@ export class AppConfig {
     const devLike = env.NODE_ENV === 'development' || env.NODE_ENV === 'test';
     this.mockWebhookSecret = str(env, 'MOCK_WEBHOOK_SECRET', devLike ? DEV_MOCK_WEBHOOK_SECRET : undefined);
     if (!devLike) {
-      if (this.mockWebhookSecret.length < 32) throw new Error('MOCK_WEBHOOK_SECRET must be at least 32 characters');
-      if (this.mockWebhookSecret === DEV_MOCK_WEBHOOK_SECRET) throw new Error('MOCK_WEBHOOK_SECRET must not be the public development value');
+      if (this.mockWebhookSecret.trim().length < 32) throw new Error('MOCK_WEBHOOK_SECRET must be at least 32 characters');
+      if (this.mockWebhookSecret.includes(DEV_MOCK_WEBHOOK_SECRET)) throw new Error('MOCK_WEBHOOK_SECRET must not be the public development value');
     }
 
     // 5 % on the farmer, 3 % on the worker: a 4 000 FCFA day costs 4 200 and pays 3 880.

@@ -36,7 +36,8 @@ describe('AppConfig MOCK_WEBHOOK_SECRET (issue #132)', () => {
   });
 
   it('rejects the public default value outside development/test', () => {
-    expect(() => make({ NODE_ENV: 'staging', MOCK_WEBHOOK_SECRET: DEFAULT_SECRET.padEnd(40, 'x') })).not.toThrow();
+    expect(() => make({ NODE_ENV: 'staging', MOCK_WEBHOOK_SECRET: DEFAULT_SECRET.padEnd(40, 'x') })).toThrow();
+    expect(() => make({ NODE_ENV: 'staging', MOCK_WEBHOOK_SECRET: ' '.repeat(40) })).toThrow(/at least 32/);
     expect(() => make({ NODE_ENV: 'staging', MOCK_WEBHOOK_SECRET: DEFAULT_SECRET })).toThrow();
   });
 
