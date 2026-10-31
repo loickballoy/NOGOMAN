@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 
 type Env = Record<string, string | undefined>;
 
+const DEV_MOCK_WEBHOOK_SECRET = 'dev-mock-webhook-secret';
+
 function str(env: Env, key: string, fallback?: string): string {
   const value = env[key] ?? fallback;
   if (value === undefined || value === '') {
@@ -139,7 +141,14 @@ export class AppConfig {
     const payment = env.PAYMENT_PROVIDER ?? 'mock';
     if (payment !== 'mock') throw new Error('PAYMENT_PROVIDER must be mock (real providers arrive in the payments phase)');
     this.paymentProvider = payment;
-    this.mockWebhookSecret = str(env, 'MOCK_WEBHOOK_SECRET', this.isProduction ? undefined : 'dev-mock-webhook-secret');
+    // The public dev default is only usable when NODE_ENV is explicitly development/test: an unset
+    // or mistyped NODE_ENV must never leave the public webhook endpoint signable by anyone.
+    const devLike = env.NODE_ENV === 'development' || env.NODE_ENV === 'test';
+    this.mockWebhookSecret = str(env, 'MOCK_WEBHOOK_SECRET', devLike ? DEV_MOCK_WEBHOOK_SECRET : undefined);
+    if (!devLike) {
+      if (this.mockWebhookSecret.length < 32) throw new Error('MOCK_WEBHOOK_SECRET must be at least 32 characters');
+      if (this.mockWebhookSecret === DEV_MOCK_WEBHOOK_SECRET) throw new Error('MOCK_WEBHOOK_SECRET must not be the public development value');
+    }
 
     // 5 % on the farmer, 3 % on the worker: a 4 000 FCFA day costs 4 200 and pays 3 880.
     // Frozen on each payment at funding; a change only affects missions funded afterwards.

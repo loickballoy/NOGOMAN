@@ -118,6 +118,7 @@ per second and cached for a day. For heavier traffic, self-host Nominatim and se
   reported by the provider differs from what was asked. Their signed timestamp must be less than
   5 minutes old and at most 1 minute ahead (`WEBHOOK_EXPIRED` otherwise). The mock signs
   `${x-mock-timestamp}.${rawBody}` (Unix seconds) with `MOCK_WEBHOOK_SECRET` in `x-mock-signature`.
+  Hors `NODE_ENV=development`/`test` (explicites), `MOCK_WEBHOOK_SECRET` est obligatoire (32 caractères minimum, jamais la valeur de développement publique) : l'API refuse de démarrer sinon.
 - Admin routes answer only over Tailscale or the LAN (`ADMIN_OVER_INTERNET=false`). Every admin
   call is logged.
 - `DELETE /me` deletes the account: name, number, location, payout number and messages are

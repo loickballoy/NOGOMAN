@@ -3,7 +3,7 @@ import { OrangeSmsProvider } from './orange-sms.provider';
 
 describe('OrangeSmsProvider', () => {
   const config = new AppConfig({
-    JWT_SECRET: 'x'.repeat(32), OTP_SECRET: 'y'.repeat(32),
+    NODE_ENV: 'test', JWT_SECRET: 'x'.repeat(32), OTP_SECRET: 'y'.repeat(32),
     SMS_PROVIDER: 'orange', ORANGE_CLIENT_ID: 'id', ORANGE_CLIENT_SECRET: 'secret',
   });
   const calls: { url: string; init: RequestInit }[] = [];
